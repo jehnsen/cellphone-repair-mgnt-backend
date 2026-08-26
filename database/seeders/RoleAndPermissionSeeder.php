@@ -11,8 +11,7 @@ class RoleAndPermissionSeeder extends Seeder
     /**
      * Action-level permissions per docs/design/01-domain-design.md §2.1 —
      * cost/margin fields and destructive actions are permission-gated in
-     * the API resource/policy layer (added in Stage 4), not merely hidden
-     * by the client.
+     * the API resource/policy layer, not merely hidden by the client.
      */
     private const PERMISSIONS = [
         'tickets.view', 'tickets.create', 'tickets.update', 'tickets.release',
@@ -21,10 +20,11 @@ class RoleAndPermissionSeeder extends Seeder
         'sales.create', 'sales.void', 'sales.refund', 'sales.discount.override',
         'shifts.open', 'shifts.close',
         'customers.view', 'customers.manage',
-        'catalog.manage',
+        'catalog.view', 'catalog.manage',
+        'branches.view', 'branches.manage',
+        'users.view', 'users.manage',
         'reports.view', 'reports.margin.view',
         'settings.manage',
-        'users.manage',
         'acquisitions.manage',
     ];
 
@@ -36,7 +36,9 @@ class RoleAndPermissionSeeder extends Seeder
             'sales.create', 'sales.void', 'sales.refund', 'sales.discount.override',
             'shifts.open', 'shifts.close',
             'customers.view', 'customers.manage',
-            'catalog.manage',
+            'catalog.view', 'catalog.manage',
+            'branches.view',
+            'users.view',
             'reports.view', 'reports.margin.view',
             'acquisitions.manage',
         ],
@@ -46,12 +48,16 @@ class RoleAndPermissionSeeder extends Seeder
             'sales.create', 'sales.refund',
             'shifts.open', 'shifts.close',
             'customers.view', 'customers.manage',
+            'catalog.view',
+            'branches.view',
             'reports.view',
         ],
         'technician' => [
             'tickets.view', 'tickets.update',
             'inventory.view',
             'customers.view',
+            'catalog.view',
+            'branches.view',
         ],
     ];
 

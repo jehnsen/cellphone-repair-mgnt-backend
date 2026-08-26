@@ -44,7 +44,23 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * Creates a user with the given role (permissions synced via the real
+ * seeder, not hand-rolled, so tests exercise the actual permission set) and
+ * returns [$user, $bearerToken].
+ */
+function userWithRole(string $role, ?App\Models\Branch $branch = null): array
 {
-    // ..
+    // RefreshDatabase rolls back the transaction after every test, but
+    // Spatie's permission cache ('array' store) is a process-lifetime
+    // singleton that survives the rollback — without this, a later test
+    // can see a previous test's now-rolled-back role/permission rows.
+    app(Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+    test()->seed(Database\Seeders\RoleAndPermissionSeeder::class);
+
+    $branch ??= App\Models\Branch::factory()->create();
+    $user = App\Models\User::factory()->create(['branch_id' => $branch->id]);
+    $user->assignRole($role);
+
+    return [$user, $user->createToken('test-device')->plainTextToken];
 }

@@ -12,6 +12,15 @@ catalogue, endpoint list) lives in
 that before touching migrations or routes — this README only covers running
 the thing.
 
+A Postman collection covering every endpoint implemented so far — with
+auto-captured ULIDs chaining each Create into the Show/Update requests below
+it, a working Idempotency-Key demo, and a self-cleaning teardown folder —
+lives at
+[`docs/postman/Cellphone-Repair-Shop-API.postman_collection.json`](docs/postman/Cellphone-Repair-Shop-API.postman_collection.json).
+Import it, run **Auth → Issue Token** first, and the rest works out of the
+box against a freshly seeded database. Verified end-to-end with `newman`
+(`npx newman run docs/postman/Cellphone-Repair-Shop-API.postman_collection.json`).
+
 ## Rule zero: JSON, always, no exceptions
 
 This is a pure JSON API. There is no presentation layer of any kind — no
@@ -154,16 +163,81 @@ Conventions applied consistently across all of them:
   bug caught while seeding: two branches in the same month both produced
   `JO-202608-0001` before `code` was added.
 
-## API surface (so far)
+## API layer: Controller → Service → Repository
 
-```
-GET  /api/v1/health          liveness
-GET  /api/v1/ready           readiness — checks DB, Redis, queue
-POST /api/v1/auth/token      issue a bearer token
-GET  /api/v1/auth/tokens     list the current user's tokens      (auth required)
-DELETE /api/v1/auth/tokens/{id}   revoke one                     (auth required)
-POST /api/v1/auth/logout     revoke the current token            (auth required)
-```
+Every endpoint follows the same three-layer split, plus a dedicated Request
+and Response class per action:
 
-Everything else in the design doc's endpoint list ships in later stages —
-see `docs/design/01-domain-design.md` §8 for the build order.
+- **Repository** (`app/Repositories/`) — the only place that talks to
+  Eloquent. `BaseRepository` implements a generic `RepositoryInterface`
+  (`all`, `paginate`, `find`, `findByUlid`, `create`, `update`, `delete`)
+  using [spatie/laravel-query-builder](https://spatie.be/docs/laravel-query-builder)
+  for filtering/sorting against an explicit per-model allow-list (Rule:
+  "filtering via spatie/laravel-query-builder with explicit allow-lists").
+  Concrete repositories only override the allow-lists and add model-specific
+  finders (`CustomerRepository::findByMobile()`,
+  `CustomerDeviceRepository::findAllByImei()`). Bound to their interfaces in
+  `App\Providers\RepositoryServiceProvider`.
+- **Service** (`app/Services/`) — business logic and orchestration, injected
+  with a repository *interface* (never the concrete class). This is the only
+  layer allowed to call `->update()`/`->create()` (Rule 10: no raw
+  `$model->update()` from a controller).
+- **Controller** (`app/Http/Controllers/Api/V1/`) — thin. Validates via a
+  Form Request, resolves any client-supplied ULIDs to internal ids (see
+  below), calls the service, returns a Resource. Authorization for
+  `index`/`show` goes through `$this->authorize()` against a Policy; `store`/
+  `update`/`destroy` delegate to the Form Request's own `authorize()` so the
+  check happens before the controller body even runs.
+- **Request** (`app/Http/Requests/Api/V1/{Model}/Store*.php`,
+  `Update*.php`) — one pair per model, every one of them.
+- **Resource** (`app/Http/Resources/`) — one per model, the only thing that
+  ever gets serialized to JSON. `ProductResource` is the concrete example of
+  "cost/margin fields conditionally included by permission": `cost` is
+  wrapped in `$this->when($request->user()->can('reports.margin.view'), ...)`
+  and disappears from the JSON entirely for a cashier.
+
+**Foreign keys in request bodies are ULIDs, never internal ids** — Rule 6
+("never expose sequential ids... in URLs, document numbers, or QR payloads")
+applies to request bodies too, not just URLs. A client sends
+`"branch_ulid": "01J..."`; the controller resolves it via
+`Branch::idFromUlid()` (`App\Models\Concerns\HasUlid::idFromUlid()`) before
+it ever reaches the service or repository. Route *path* parameters don't
+need this — Laravel's route-model-binding already resolves
+`Branch $branch` from `{branch}` using the ulid automatically.
+
+**Policies** (`app/Policies/`) — one per model, checked against the
+permissions seeded in `RoleAndPermissionSeeder`. `catalog.view` gates read
+access to all five catalog models via a shared `AuthorizesCatalog` trait;
+everything else is bespoke per model (e.g. `UserPolicy::delete` also blocks
+a user deleting themself).
+
+Master data implemented so far: branches (no `destroy` — closing a branch
+is `is_active = false` via `update`, not a row removal, per Flag 1), users,
+the five catalog models, customers, and customer devices (nested under
+`/customers/{customer}/devices`, plus the flagship
+`GET /devices/by-imei/{imei}` cross-customer, cross-branch history lookup).
+Every one of these routes, plus the Stage 2 auth/health routes, is listed by
+`php artisan route:list`. Repairs, inventory, POS, and the rest of the
+domain follow the same pattern in later stages — see
+`docs/design/01-domain-design.md` §8 for the build order.
+
+### A real bug this surfaced: BranchScope and cross-branch lookups
+
+`CustomerDeviceRepository::findAllByImei()` originally eager-loaded the
+`customer` relation the normal way, which meant `BranchScope` silently
+hid the customer's details whenever the lookup was run by a user from a
+*different* branch than the one on record — exactly the "customer came back
+to a different branch" scenario the by-IMEI endpoint exists to handle. Fixed
+by eager-loading with `withoutGlobalScopes()` for that one relation, with a
+comment explaining why. Caught by
+`tests/Feature/Api/V1/CustomerDeviceTest.php`.
+
+### A testing gotcha worth knowing before you add more tests
+
+Sanctum's auth guard caches the resolved user for the rest of the test
+*process*, not just one HTTP call. Two `$this->withToken($tokenA)->...` then
+`$this->withToken($tokenB)->...` calls in the *same* test function will not
+reliably re-authenticate as the second user — the first user's resolution
+sticks. Always split "user A does X, user B is denied X" into two separate
+`it()` tests rather than chaining both calls in one. (Same root cause as the
+token-revocation test note from Stage 2.)

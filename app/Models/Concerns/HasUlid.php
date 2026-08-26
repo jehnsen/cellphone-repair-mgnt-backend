@@ -24,4 +24,14 @@ trait HasUlid
     {
         return 'ulid';
     }
+
+    /**
+     * Resolves a client-supplied ULID to the internal id — the only place
+     * a foreign key given in a request body should ever be translated.
+     * Clients never see or send sequential ids (Rule 6).
+     */
+    public static function idFromUlid(string $ulid): int
+    {
+        return static::query()->where('ulid', $ulid)->firstOrFail()->getKey();
+    }
 }
