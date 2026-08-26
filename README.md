@@ -127,6 +127,13 @@ clears config cache and runs the suite. Notable coverage so far:
 - Token issuance, listing, and revocation.
 - Liveness/readiness endpoints against real dependencies (readiness will
   correctly report `503` while Redis is down locally — see above).
+- Repair tickets: ULID resolution on create, legal/illegal state
+  transitions (including the `409` vs `422` distinction), edits locked once
+  `released`, the release permission gate, margin/unlock field visibility by
+  role, line items (part vs. labor, cross-field validation), photo upload
+  with a signed URL response, and the quote send/approve/decline flow
+  including its auto-transitions (`tests/Feature/Api/V1/RepairTicketTest.php`,
+  `TicketLineTest.php`, `TicketPhotoTest.php`, `TicketQuoteTest.php`).
 
 ## Data layer
 
@@ -216,10 +223,80 @@ is `is_active = false` via `update`, not a row removal, per Flag 1), users,
 the five catalog models, customers, and customer devices (nested under
 `/customers/{customer}/devices`, plus the flagship
 `GET /devices/by-imei/{imei}` cross-customer, cross-branch history lookup).
-Every one of these routes, plus the Stage 2 auth/health routes, is listed by
-`php artisan route:list`. Repairs, inventory, POS, and the rest of the
-domain follow the same pattern in later stages — see
+Stage 5 adds repair tickets, their state machine, timeline, line items,
+photos, and quotes (below). Every one of these routes, plus the Stage 2
+auth/health routes, is listed by `php artisan route:list`. Inventory, POS,
+and the rest of the domain follow the same pattern in later stages — see
 `docs/design/01-domain-design.md` §8 for the build order.
+
+## Repairs: tickets, state machine, timeline, photos, quotes (Stage 5)
+
+`RepairTicket` (`/tickets`, no `destroy` — a ticket only ever moves through
+its state machine, never gets removed) plus four nested resources:
+
+- **State machine** (`App\Support\TicketStateMachine`) — the fixed
+  transition graph from `docs/design/01-domain-design.md` §4, enforced by
+  `POST /tickets/{ticket}/transition`. An illegal transition throws
+  `ApiException(ErrorCode::InvalidStatusTransition, ...)`, which renders as
+  **`409`**, not `422` — this is a state conflict, not a validation failure;
+  see the error code catalogue. The transition itself row-locks the ticket
+  (`lockForUpdate()`) before checking the graph, so two concurrent
+  transition requests can't both succeed.
+- **Timeline** (`GET /tickets/{ticket}/events`) — an append-only
+  `ticket_events` ledger (`App\Services\TicketEventRecorder`), cursor-paginated
+  per the design brief's "cursor pagination on ledger/timeline endpoints"
+  rule (`cursorPaginate()`, not `paginate()`).
+- **Line items** (`GET|POST /tickets/{ticket}/lines`) — `part` or `labor`,
+  matching the DB CHECK constraint (`product_id` xor `service_id`) at the
+  Form Request layer too. `unit_cost` is gated by `reports.margin.view`, same
+  as `ProductResource::cost`.
+- **Photos** (`GET|POST /tickets/{ticket}/photos`) — Rule Zero for binary:
+  the upload is multipart in, but the response is always JSON — a ULID plus
+  a 15-minute signed URL (`Storage::disk('local')->temporaryUrl()`), never
+  the image bytes. The controller sets `$photo->signed_url` as a virtual
+  attribute before wrapping it in a Resource, rather than the Resource
+  reaching into a Service itself.
+- **Quotes** (`GET|POST /tickets/{ticket}/quotes`,
+  `POST .../quotes/{quote}/respond`) — sending a quote auto-advances
+  `diagnosed → awaiting_approval`; an `approved` decision locks
+  `approved_amount` onto the ticket, recalculates its balance, and
+  auto-advances to `in_repair`; `declined` auto-advances to
+  `returned_as_is` — each auto-transition only fires if it's still legal
+  from the ticket's *current* status, since a quote can be answered late.
+
+Two guards the `ready_for_pickup → released` edge still needs are
+deliberately not enforced yet, per `TicketStateMachine`'s docblock: a
+matching IMEI verification (Stage 6, chain of custody) and a settled balance
+(Stage 8, POS). Stock consumption for `part` ticket lines isn't wired to the
+inventory ledger yet either (Stage 7).
+
+### Two more real bugs this stage surfaced
+
+**A ticket's customer/technician can legitimately sit in another branch.**
+`RepairTicket` is branch-scoped, but a repeat customer (or a technician
+covering another branch) may not share the ticket's own branch — the same
+scenario the IMEI-history lookup above already had to handle. Eager-loading
+`customer`/`assignedTechnician` the normal way meant `BranchScope` silently
+nulled them out whenever that happened, which the next bug turned from
+"silently wrong" into a crash. Fixed in one place —
+`RepairTicketService::loadDisplayRelations()` — with
+`withoutGlobalScopes()` on those two relations, used by every controller
+action and by `TicketPhotoService` for `captured_by`.
+
+**`new SomeResource($this->whenLoaded('nullableRelation'))` needs `resolve()`,
+not `toArray()`, to serialize safely.** Laravel's resource pipeline has a
+built-in safety net for exactly this pattern — `whenLoaded()` on a relation
+that's loaded but empty (an unassigned `assigned_technician`, for instance)
+returns `null`, and `JsonResource::resolve()`'s `filter()` step turns a
+nested `new XResource(null)` into plain `null` before it's ever serialized.
+That safety net only runs on the `resolve()`/`response()` path, though —
+`TicketQuoteController::respond()` originally built its two-resource
+response by calling `->toArray($request)` directly and hand-assembling the
+result into `response()->json([...])`, which skips `filter()` entirely and
+crashes the moment `json_encode()` reaches the null-wrapped nested resource.
+Fixed by calling `->resolve($request)` instead — same output, but through
+the path that actually filters. Caught by
+`tests/Feature/Api/V1/TicketQuoteTest.php`.
 
 ### A real bug this surfaced: BranchScope and cross-branch lookups
 

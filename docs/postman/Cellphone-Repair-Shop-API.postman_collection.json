@@ -1,1134 +1,2413 @@
 {
-  "info": {
-    "_postman_id": "b7e4d2a0-1c3f-4a6e-9b2d-3f8e7c1a5d90",
-    "name": "Cellphone Repair Shop API",
-    "description": "# Cellphone Repair Shop API\n\nJSON API for a cellphone repair shop management system — repair intake and release, chain-of-custody proof, inventory across three item classes, point of sale, buy-back/refurb, and reporting. See `docs/design/01-domain-design.md` in the repo for the full domain design (ERDs, table catalogue, ticket state machine, error code catalogue).\n\nThis collection covers every endpoint implemented so far: health/readiness, auth, and the master-data contexts (branches, users, catalog, customers & devices). Later stages (repairs, chain of custody, inventory ledger, POS, buy-back, reporting) will extend this same collection as they ship — see the design doc §8 for the build order.\n\n## Getting started\n\n1. Make sure the API is running (`php artisan serve`) and `{{baseUrl}}` below matches it — defaults to `http://127.0.0.1:8000/api/v1`.\n2. Run **Auth → Issue Token** first. It authenticates against a seeded demo user (`ricardo.santos@fixmo.test` / `password` — the owner; see `database/seeders/UserSeeder.php` for the full roster across both roles and branches) and automatically stores the bearer token in the `token` collection variable. Every other request in this collection inherits it via collection-level Bearer auth.\n3. Every **Create** request in this collection captures the new record's `ulid` into a collection variable on success (e.g. creating a branch sets `branch_ulid`), so the Show/Update/Delete requests below it work immediately without manual copy-pasting.\n\n## Conventions\n\n- **Envelope.** Success responses are `{ \"data\": ..., \"meta\"?: ..., \"links\"?: ... }`. Errors are always `{ \"error\": { \"code\", \"message\", \"details\" } }` — clients switch on `code`, never on `message` text.\n- **IDs are ULIDs, not sequential ids.** Every path parameter *and every foreign-key field in a request body* (`branch_ulid`, `device_brand_ulid`, `product_category_ulid`, `compatible_device_model_ulids`, ...) is a ULID. The API never exposes the internal `BIGINT AUTO_INCREMENT` id anywhere a client can see it.\n- **Idempotency-Key.** Every write request here sends a fresh `{{$guid}}` as `Idempotency-Key`. Resending the exact same key with the exact same body returns the original cached response; the same key with a *different* body returns `409 IDEMPOTENCY_CONFLICT`. Try it: send a Create request twice with \"Send\" — Postman regenerates `{{$guid}}` each time by design, so to see the replay behavior, copy the header value from one request into the next send manually.\n- **Pagination & filtering.** List endpoints return page pagination (`meta.current_page`, `meta.total`, etc.) and accept `filter[field]=value`, `sort=field` / `sort=-field` (descending), and `page=`. Each List request below has the allow-listed filter/sort query params present but disabled — enable the ones you want.\n- **Permissions.** Endpoints are gated by the permissions seeded in `RoleAndPermissionSeeder` (e.g. `branches.manage`, `catalog.manage`, `reports.margin.view`). The seeded owner (`ricardo.santos@fixmo.test`) has every permission; try authenticating as a cashier or technician (see the seeder for emails, same `password`) to see `403 FORBIDDEN` and permission-gated fields (e.g. a product's `cost` field disappears entirely for a cashier) in action.\n\n## Error code catalogue (implemented so far)\n\n| HTTP | code | Meaning |\n|---|---|---|\n| 401 | `UNAUTHENTICATED` | Missing/invalid/expired bearer token |\n| 403 | `FORBIDDEN` | Authenticated but lacks the permission |\n| 404 | `NOT_FOUND` | ULID doesn't resolve, or resolves outside your branch scope |\n| 405 | `METHOD_NOT_ALLOWED` | Verb not supported on the route |\n| 409 | `IDEMPOTENCY_CONFLICT` | Same `Idempotency-Key` replayed with a different body |\n| 422 | `VALIDATION_FAILED` | Form Request failure; see `error.details[]` per field |\n| 429 | `RATE_LIMITED` | Limiter exceeded |\n| 500 | `INTERNAL_ERROR` | Unhandled throwable — still JSON, never HTML |\n| 503 | `SERVICE_UNAVAILABLE` | `/ready` dependency (DB/Redis/queue) is down |\n\nThe full catalogue, including business codes for stages not yet built (`IMEI_MISMATCH`, `UNIT_ALREADY_SOLD`, `SHIFT_NOT_OPEN`, ...), is in `docs/design/01-domain-design.md` §5.",
-    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-  },
-  "auth": {
-    "type": "bearer",
-    "bearer": [
-      { "key": "token", "value": "{{token}}", "type": "string" }
+    "info": {
+        "_postman_id": "b7e4d2a0-1c3f-4a6e-9b2d-3f8e7c1a5d90",
+        "name": "Cellphone Repair Shop API",
+        "description": "# Cellphone Repair Shop API\n\nJSON API for a cellphone repair shop management system \u2014 repair intake and release, chain-of-custody proof, inventory across three item classes, point of sale, buy-back\/refurb, and reporting. See `docs\/design\/01-domain-design.md` in the repo for the full domain design (ERDs, table catalogue, ticket state machine, error code catalogue).\n\nThis collection covers every endpoint implemented so far: health\/readiness, auth, and the master-data contexts (branches, users, catalog, customers & devices). Later stages (repairs, chain of custody, inventory ledger, POS, buy-back, reporting) will extend this same collection as they ship \u2014 see the design doc \u00a78 for the build order.\n\n## Getting started\n\n1. Make sure the API is running (`php artisan serve`) and `{{baseUrl}}` below matches it \u2014 defaults to `http:\/\/127.0.0.1:8000\/api\/v1`.\n2. Run **Auth \u2192 Issue Token** first. It authenticates against a seeded demo user (`ricardo.santos@fixmo.test` \/ `password` \u2014 the owner; see `database\/seeders\/UserSeeder.php` for the full roster across both roles and branches) and automatically stores the bearer token in the `token` collection variable. Every other request in this collection inherits it via collection-level Bearer auth.\n3. Every **Create** request in this collection captures the new record's `ulid` into a collection variable on success (e.g. creating a branch sets `branch_ulid`), so the Show\/Update\/Delete requests below it work immediately without manual copy-pasting.\n\n## Conventions\n\n- **Envelope.** Success responses are `{ \"data\": ..., \"meta\"?: ..., \"links\"?: ... }`. Errors are always `{ \"error\": { \"code\", \"message\", \"details\" } }` \u2014 clients switch on `code`, never on `message` text.\n- **IDs are ULIDs, not sequential ids.** Every path parameter *and every foreign-key field in a request body* (`branch_ulid`, `device_brand_ulid`, `product_category_ulid`, `compatible_device_model_ulids`, ...) is a ULID. The API never exposes the internal `BIGINT AUTO_INCREMENT` id anywhere a client can see it.\n- **Idempotency-Key.** Every write request here sends a fresh `{{$guid}}` as `Idempotency-Key`. Resending the exact same key with the exact same body returns the original cached response; the same key with a *different* body returns `409 IDEMPOTENCY_CONFLICT`. Try it: send a Create request twice with \"Send\" \u2014 Postman regenerates `{{$guid}}` each time by design, so to see the replay behavior, copy the header value from one request into the next send manually.\n- **Pagination & filtering.** List endpoints return page pagination (`meta.current_page`, `meta.total`, etc.) and accept `filter[field]=value`, `sort=field` \/ `sort=-field` (descending), and `page=`. Each List request below has the allow-listed filter\/sort query params present but disabled \u2014 enable the ones you want.\n- **Permissions.** Endpoints are gated by the permissions seeded in `RoleAndPermissionSeeder` (e.g. `branches.manage`, `catalog.manage`, `reports.margin.view`). The seeded owner (`ricardo.santos@fixmo.test`) has every permission; try authenticating as a cashier or technician (see the seeder for emails, same `password`) to see `403 FORBIDDEN` and permission-gated fields (e.g. a product's `cost` field disappears entirely for a cashier) in action.\n\n## Error code catalogue (implemented so far)\n\n| HTTP | code | Meaning |\n|---|---|---|\n| 401 | `UNAUTHENTICATED` | Missing\/invalid\/expired bearer token |\n| 403 | `FORBIDDEN` | Authenticated but lacks the permission |\n| 404 | `NOT_FOUND` | ULID doesn't resolve, or resolves outside your branch scope |\n| 405 | `METHOD_NOT_ALLOWED` | Verb not supported on the route |\n| 409 | `IDEMPOTENCY_CONFLICT` | Same `Idempotency-Key` replayed with a different body |\n| 422 | `VALIDATION_FAILED` | Form Request failure; see `error.details[]` per field |\n| 429 | `RATE_LIMITED` | Limiter exceeded |\n| 500 | `INTERNAL_ERROR` | Unhandled throwable \u2014 still JSON, never HTML |\n| 503 | `SERVICE_UNAVAILABLE` | `\/ready` dependency (DB\/Redis\/queue) is down |\n\nThe full catalogue, including business codes for stages not yet built (`IMEI_MISMATCH`, `UNIT_ALREADY_SOLD`, `SHIFT_NOT_OPEN`, ...), is in `docs\/design\/01-domain-design.md` \u00a75.",
+        "schema": "https:\/\/schema.getpostman.com\/json\/collection\/v2.1.0\/collection.json"
+    },
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{token}}",
+                "type": "string"
+            }
+        ]
+    },
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text\/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text\/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http:\/\/127.0.0.1:8000\/api\/v1",
+            "type": "string"
+        },
+        {
+            "key": "token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "tokenId",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "branch_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "owner_branch_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "user_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "device_brand_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "device_model_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "service_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "product_category_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "product_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "customer_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "customer_device_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "imei",
+            "value": "490154203237518",
+            "type": "string"
+        },
+        {
+            "key": "ticket_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "quote_ulid",
+            "value": "",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "Health",
+            "item": [
+                {
+                    "name": "Liveness",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/health",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "health"
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('is up', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().data.status).to.eql('up'); });"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "Readiness",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/ready",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "ready"
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('reports dependency checks', () => {",
+                                    "  pm.expect([200, 503]).to.include(pm.response.code);",
+                                    "  const json = pm.response.json();",
+                                    "  const checks = pm.response.code === 200 ? json.data.checks : json.error.details[0].status;",
+                                    "  pm.expect(checks).to.have.property('database');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Auth",
+            "item": [
+                {
+                    "name": "Issue Token",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"ricardo.santos@fixmo.test\",\n  \"password\": \"password\",\n  \"device_name\": \"postman\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/auth\/token",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "token"
+                            ]
+                        },
+                        "description": "Issues a Sanctum bearer token. Every other request in this collection uses the `token` collection variable this sets automatically."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('token issued', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.token) { pm.collectionVariables.set('token', json.data.token); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List My Tokens",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/auth\/tokens",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "tokens"
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('OK', () => pm.response.to.have.status(200));"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Branches",
+            "description": "No destroy endpoint \u2014 closing a branch is `is_active = false` via Update, not a row removal (see design doc Flag 1). Requires `branches.manage` to create\/update, `branches.view` to read (every seeded role has view).",
+            "item": [
+                {
+                    "name": "List Branches",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/branches?filter[name]=&filter[code]=&filter[city]=&filter[is_active]=&sort=name&page=1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "branches"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[name]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[code]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[city]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[is_active]",
+                                    "value": "true",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "name",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Find My Branch (used by Users\/Customers below)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/branches?filter[code]=QC",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "branches"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[code]",
+                                    "value": "QC"
+                                }
+                            ]
+                        },
+                        "description": "Looks up the seeded owner's own branch (Quezon City, the demo user in Auth > Issue Token belongs here) and stores it as owner_branch_ulid. Deliberately NOT the branch created below \u2014 BranchScope hides records in a different branch than the authenticated user's own, even for an owner, so Create User\/Create Customer need this branch, not a freshly created one, for the Show\/Update requests underneath them to find anything."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('found', () => pm.response.to.have.status(200));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data[0] && json.data[0].ulid) { pm.collectionVariables.set('owner_branch_ulid', json.data[0].ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "Create Branch",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"FixMo Phone Repair \u2014 Davao\",\n  \"code\": \"DVO\",\n  \"legal_name\": \"FixMo Phone Repair Services Corp.\",\n  \"address_line1\": \"123 Rizal St.\",\n  \"city\": \"Davao City\",\n  \"province\": \"Davao del Sur\",\n  \"postal_code\": \"8000\",\n  \"contact_phone\": \"09171234567\",\n  \"contact_email\": \"davao@fixmo.test\",\n  \"tin\": \"123456789000\",\n  \"bir_permit_no\": \"BIR-000000001\",\n  \"vat_registered\": true,\n  \"receipt_header_text\": \"FixMo Phone Repair Services\",\n  \"receipt_footer_text\": \"Thank you for choosing FixMo!\",\n  \"timezone\": \"Asia\/Manila\",\n  \"is_active\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/branches",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "branches"
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('branch_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "Show Branch",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/branches\/{{branch_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "branches",
+                                "{{branch_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Branch",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"FixMo Phone Repair \u2014 Davao (Relocated)\",\n  \"is_active\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/branches\/{{branch_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "branches",
+                                "{{branch_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Users",
+            "description": "Requires `users.manage` to create\/update\/delete, `users.view` to read (owner + manager only in the seeded permission set).",
+            "item": [
+                {
+                    "name": "List Users",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/users?filter[name]=&filter[employee_code]=&filter[email]=&filter[branch_id]=&filter[is_active]=&sort=name&page=1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "users"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[name]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[employee_code]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[email]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[branch_id]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[is_active]",
+                                    "value": "true",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "name",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create User",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_ulid\": \"{{owner_branch_ulid}}\",\n  \"employee_code\": \"EMP-9001\",\n  \"name\": \"Nico Bautista\",\n  \"email\": \"nico.bautista@fixmo.test\",\n  \"password\": \"password123\",\n  \"role\": \"technician\",\n  \"is_active\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/users",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "users"
+                            ]
+                        },
+                        "description": "role must be one of owner, manager, cashier, technician. Uses owner_branch_ulid (run Branches > Find My Branch first) rather than a freshly created branch \u2014 see that request's description for why."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('user_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "Show User",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/users\/{{user_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update User",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Nico Bautista Jr.\",\n  \"role\": \"manager\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/users\/{{user_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Catalog",
+            "description": "Requires `catalog.manage` to create\/update\/delete, `catalog.view` to read (every seeded role has view).",
+            "item": [
+                {
+                    "name": "Device Brands",
+                    "item": [
+                        {
+                            "name": "List Device Brands",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/device-brands?filter[name]=&filter[is_active]=&sort=name&page=1",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "device-brands"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "filter[name]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[is_active]",
+                                            "value": "true",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "sort",
+                                            "value": "name",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "page",
+                                            "value": "1",
+                                            "disabled": true
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Device Brand",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Huawei\",\n  \"logo_ref\": null,\n  \"is_active\": true\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/device-brands",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "device-brands"
+                                    ]
+                                }
+                            },
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text\/javascript",
+                                        "exec": [
+                                            "pm.test('created', () => pm.response.to.have.status(201));",
+                                            "const json = pm.response.json();",
+                                            "if (json.data && json.data.ulid) { pm.collectionVariables.set('device_brand_ulid', json.data.ulid); }"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "response": []
+                        },
+                        {
+                            "name": "Show Device Brand",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/device-brands\/{{device_brand_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "device-brands",
+                                        "{{device_brand_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Update Device Brand",
+                            "request": {
+                                "method": "PATCH",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Huawei Technologies\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/device-brands\/{{device_brand_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "device-brands",
+                                        "{{device_brand_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
+                {
+                    "name": "Device Models",
+                    "item": [
+                        {
+                            "name": "List Device Models",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/device-models?filter[name]=&filter[device_brand_id]=&filter[is_active]=&sort=name&page=1",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "device-models"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "filter[name]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[device_brand_id]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[is_active]",
+                                            "value": "true",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "sort",
+                                            "value": "name",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "page",
+                                            "value": "1",
+                                            "disabled": true
+                                        }
+                                    ]
+                                },
+                                "description": "filter[device_brand_id] takes the brand's internal id, not its ulid, per spatie\/laravel-query-builder's exact-match filter \u2014 a known asymmetry versus request-body fields, noted for whoever builds an SDK against this."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Device Model",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"device_brand_ulid\": \"{{device_brand_ulid}}\",\n  \"name\": \"Nova 12\",\n  \"release_year\": 2024,\n  \"aliases\": [\"Huawei Nova 12\"],\n  \"is_active\": true\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/device-models",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "device-models"
+                                    ]
+                                },
+                                "description": "Run Device Brands > Create Device Brand first so device_brand_ulid is set."
+                            },
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text\/javascript",
+                                        "exec": [
+                                            "pm.test('created', () => pm.response.to.have.status(201));",
+                                            "const json = pm.response.json();",
+                                            "if (json.data && json.data.ulid) { pm.collectionVariables.set('device_model_ulid', json.data.ulid); }"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "response": []
+                        },
+                        {
+                            "name": "Show Device Model",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/device-models\/{{device_model_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "device-models",
+                                        "{{device_model_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Update Device Model",
+                            "request": {
+                                "method": "PATCH",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Nova 12 Pro\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/device-models\/{{device_model_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "device-models",
+                                        "{{device_model_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
+                {
+                    "name": "Services",
+                    "item": [
+                        {
+                            "name": "List Services",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/services?filter[name]=&filter[category]=&filter[is_active]=&sort=name&page=1",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "services"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "filter[name]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[category]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[is_active]",
+                                            "value": "true",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "sort",
+                                            "value": "name",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "page",
+                                            "value": "1",
+                                            "disabled": true
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Service",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Screen Replacement\",\n  \"category\": \"screen\",\n  \"default_price\": 1200,\n  \"default_duration_minutes\": 45,\n  \"warranty_days\": 30,\n  \"is_active\": true\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/services",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "services"
+                                    ]
+                                }
+                            },
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text\/javascript",
+                                        "exec": [
+                                            "pm.test('created', () => pm.response.to.have.status(201));",
+                                            "const json = pm.response.json();",
+                                            "if (json.data && json.data.ulid) { pm.collectionVariables.set('service_ulid', json.data.ulid); }"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "response": []
+                        },
+                        {
+                            "name": "Show Service",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/services\/{{service_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "services",
+                                        "{{service_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Update Service",
+                            "request": {
+                                "method": "PATCH",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"default_price\": 1350\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/services\/{{service_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "services",
+                                        "{{service_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
+                {
+                    "name": "Product Categories",
+                    "item": [
+                        {
+                            "name": "List Product Categories",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/product-categories?filter[name]=&filter[parent_id]=&filter[is_active]=&sort=name&page=1",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "product-categories"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "filter[name]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[parent_id]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[is_active]",
+                                            "value": "true",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "sort",
+                                            "value": "name",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "page",
+                                            "value": "1",
+                                            "disabled": true
+                                        }
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Product Category",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Charging Ports\",\n  \"parent_ulid\": null,\n  \"is_active\": true\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/product-categories",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "product-categories"
+                                    ]
+                                }
+                            },
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text\/javascript",
+                                        "exec": [
+                                            "pm.test('created', () => pm.response.to.have.status(201));",
+                                            "const json = pm.response.json();",
+                                            "if (json.data && json.data.ulid) { pm.collectionVariables.set('product_category_ulid', json.data.ulid); }"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "response": []
+                        },
+                        {
+                            "name": "Show Product Category",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/product-categories\/{{product_category_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "product-categories",
+                                        "{{product_category_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Update Product Category",
+                            "request": {
+                                "method": "PATCH",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"name\": \"Charging Ports & Flex Cables\"\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/product-categories\/{{product_category_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "product-categories",
+                                        "{{product_category_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
+                {
+                    "name": "Products",
+                    "item": [
+                        {
+                            "name": "List Products",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/products?filter[name]=&filter[sku]=&filter[type]=&filter[product_category_id]=&filter[device_brand_id]=&filter[is_active]=&filter[is_serialized]=&sort=name&include=compatibleDeviceModels&page=1",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "products"
+                                    ],
+                                    "query": [
+                                        {
+                                            "key": "filter[name]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[sku]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[type]",
+                                            "value": "handset",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[product_category_id]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[device_brand_id]",
+                                            "value": "",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[is_active]",
+                                            "value": "true",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "filter[is_serialized]",
+                                            "value": "true",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "sort",
+                                            "value": "name",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "include",
+                                            "value": "compatibleDeviceModels",
+                                            "disabled": true
+                                        },
+                                        {
+                                            "key": "page",
+                                            "value": "1",
+                                            "disabled": true
+                                        }
+                                    ]
+                                },
+                                "description": "`cost` only appears in the response for a user with `reports.margin.view` (the seeded owner\/manager) \u2014 a cashier sees `selling_price` but not `cost`. category and brand are always eager-loaded; compatibleDeviceModels is opt-in via `include=`."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Create Product",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"sku\": \"SAM-A15-001\",\n  \"barcode\": \"1234567890123\",\n  \"name\": \"Samsung Galaxy A15\",\n  \"product_category_ulid\": \"{{product_category_ulid}}\",\n  \"device_brand_ulid\": \"{{device_brand_ulid}}\",\n  \"type\": \"handset\",\n  \"cost\": 8000,\n  \"selling_price\": 11500,\n  \"is_serialized\": true,\n  \"reorder_point\": 2,\n  \"track_inventory\": true,\n  \"is_active\": true,\n  \"compatible_device_model_ulids\": [\"{{device_model_ulid}}\"]\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/products",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "products"
+                                    ]
+                                },
+                                "description": "type is one of handset, accessory, part. Run Product Categories > Create and Device Brands > Create first so the ulid variables are set."
+                            },
+                            "event": [
+                                {
+                                    "listen": "test",
+                                    "script": {
+                                        "type": "text\/javascript",
+                                        "exec": [
+                                            "pm.test('created', () => pm.response.to.have.status(201));",
+                                            "const json = pm.response.json();",
+                                            "if (json.data && json.data.ulid) { pm.collectionVariables.set('product_ulid', json.data.ulid); }"
+                                        ]
+                                    }
+                                }
+                            ],
+                            "response": []
+                        },
+                        {
+                            "name": "Show Product",
+                            "request": {
+                                "method": "GET",
+                                "header": [],
+                                "url": {
+                                    "raw": "{{baseUrl}}\/products\/{{product_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "products",
+                                        "{{product_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "Update Product",
+                            "request": {
+                                "method": "PATCH",
+                                "header": [
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application\/json"
+                                    },
+                                    {
+                                        "key": "Idempotency-Key",
+                                        "value": "{{$guid}}"
+                                    }
+                                ],
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"selling_price\": 11999\n}",
+                                    "options": {
+                                        "raw": {
+                                            "language": "json"
+                                        }
+                                    }
+                                },
+                                "url": {
+                                    "raw": "{{baseUrl}}\/products\/{{product_ulid}}",
+                                    "host": [
+                                        "{{baseUrl}}"
+                                    ],
+                                    "path": [
+                                        "products",
+                                        "{{product_ulid}}"
+                                    ]
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Customers",
+            "description": "Requires `customers.manage` to create\/update\/delete, `customers.view` to read (every seeded role has view). mobile accepts common PH formats (09XXXXXXXXX, +639XXXXXXXXX, spaces\/dashes) and is normalized to +63XXXXXXXXXX before storing.",
+            "item": [
+                {
+                    "name": "List Customers",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers?filter[name]=&filter[mobile]=&filter[branch_id]=&filter[is_blacklisted]=&sort=name&page=1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[name]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[mobile]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[branch_id]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[is_blacklisted]",
+                                    "value": "true",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "name",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Customer",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_ulid\": \"{{owner_branch_ulid}}\",\n  \"name\": \"Juan Dela Cruz\",\n  \"mobile\": \"0917 123 4567\",\n  \"email\": \"juan.delacruz@example.com\",\n  \"address\": \"123 Mabini St., Quezon City\",\n  \"notes\": \"Prefers SMS updates.\",\n  \"is_blacklisted\": false\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers"
+                            ]
+                        },
+                        "description": "Uses owner_branch_ulid (see Branches > Find My Branch) so the authenticated owner's BranchScope can actually see this record in the Show\/Update requests below."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('customer_ulid', json.data.ulid); }",
+                                    "pm.test('mobile normalized', () => pm.expect(json.data.mobile).to.eql('+639171234567'));"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "Show Customer",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Customer",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"juan.dc@example.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Customer Devices",
+            "description": "Nested under a customer. imei accepts raw digits or common separators, is normalized, and validated as 15 digits passing the Luhn checksum (App\\Rules\\ValidImei). Same customers.view\/customers.manage permissions as Customers.",
+            "item": [
+                {
+                    "name": "List Customer's Devices",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}\/devices",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}",
+                                "devices"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Customer Device",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"device_model_ulid\": \"{{device_model_ulid}}\",\n  \"imei\": \"{{imei}}\",\n  \"serial_number\": null,\n  \"color\": \"Midnight Black\",\n  \"notes\": \"Screen protector already applied.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}\/devices",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}",
+                                "devices"
+                            ]
+                        },
+                        "description": "The default {{imei}} (490154203237518) is a well-known valid Luhn-checksum test IMEI. Run Customers > Create Customer and Catalog > Device Models > Create first."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('customer_device_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "Show Customer Device",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}\/devices\/{{customer_device_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}",
+                                "devices",
+                                "{{customer_device_ulid}}"
+                            ]
+                        },
+                        "description": "404s if customer_device_ulid doesn't belong to customer_ulid \u2014 devices are checked against their parent customer, not just looked up globally."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Customer Device",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"color\": \"Phantom Black\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}\/devices\/{{customer_device_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}",
+                                "devices",
+                                "{{customer_device_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Device History by IMEI (flagship lookup)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/devices\/by-imei\/{{imei}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "devices",
+                                "by-imei",
+                                "{{imei}}"
+                            ]
+                        },
+                        "description": "Returns every customer_devices row for this IMEI across every customer \u2014 and every branch \u2014 that ever brought it in, not scoped to one customer or one branch. This is the differentiator described in docs\/design\/01-domain-design.md \u00a72.3: a repeat repair is recognized even if the customer's first visit was at a different branch."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Repair Tickets",
+            "item": [
+                {
+                    "name": "Create Repair Ticket",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_ulid\": \"{{owner_branch_ulid}}\",\n    \"customer_ulid\": \"{{customer_ulid}}\",\n    \"customer_device_ulid\": \"{{customer_device_ulid}}\",\n    \"reported_problem\": \"Cracked screen, touch unresponsive in top-right corner.\",\n    \"problem_tags\": [\n        \"screen\"\n    ],\n    \"unlock_method\": \"pin\",\n    \"unlock_value\": \"1234\",\n    \"accessories_turned_over\": [\n        \"sim\",\n        \"charger\"\n    ],\n    \"estimated_cost\": 1800,\n    \"downpayment\": 500,\n    \"promised_date\": \"2026-08-29\",\n    \"warranty_days_offered\": 30,\n    \"terms_accepted\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets"
+                            ]
+                        },
+                        "description": "Uses owner_branch_ulid (see Branches > Find My Branch), not a freshly created branch \u2014 the authenticated owner's BranchScope needs to see the ticket in the Show\/Update requests below. Run Branches > Find My Branch, Customers > Create Customer, and Customer Devices > Create Customer Device first."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('ticket_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Repair Tickets",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets?filter[status]=&filter[overdue]=&filter[search]=&sort=-created_at&page=1",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[status]",
+                                    "value": "received",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[overdue]",
+                                    "value": "true",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[search]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-created_at",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Repair Ticket",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Repair Ticket",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"downpayment\": 800\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}"
+                            ]
+                        },
+                        "description": "Fails with 409 INVALID_STATUS_TRANSITION once the ticket has moved to released \u2014 edits are locked at that point."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Transition Ticket Status",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"to_status\": \"diagnosed\",\n    \"note\": \"Confirmed digitizer needs replacement.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/transition",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "transition"
+                            ]
+                        },
+                        "description": "Enforces the fixed state machine (docs\/design\/01-domain-design.md \u00a74) \u2014 an illegal transition (e.g. straight to 'released') returns 409 INVALID_STATUS_TRANSITION with the allowed set in the error details."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Ticket Timeline",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/events",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "events"
+                            ]
+                        },
+                        "description": "Cursor-paginated append-only event ledger. Use the response's meta.next_cursor (per Laravel's cursorPaginate shape) as ?cursor=... to page further back."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Add Ticket Line (Part)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"line_type\": \"part\",\n    \"product_ulid\": \"{{product_ulid}}\",\n    \"description\": \"Replacement OLED digitizer\",\n    \"quantity\": 1,\n    \"unit_cost\": 900,\n    \"unit_price\": 1500\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/lines",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "lines"
+                            ]
+                        },
+                        "description": "Run Catalog > Products > Create Product first. unit_cost is only visible in responses to roles with reports.margin.view."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Ticket Lines",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/lines",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "lines"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Upload Ticket Photo",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "phase",
+                                    "value": "intake",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "photo",
+                                    "type": "file",
+                                    "src": []
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/photos",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "photos"
+                            ]
+                        },
+                        "description": "Rule Zero: the response is JSON containing a ULID and a short-TTL signed url, never the binary itself. Select a JPEG\/PNG file for the \"photo\" field before sending."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Ticket Photos",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/photos",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "photos"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Send Ticket Quote",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"quoted_amount\": 1500,\n    \"channel\": \"sms\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/quotes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "quotes"
+                            ]
+                        },
+                        "description": "Sending a quote while the ticket is still \"diagnosed\" auto-advances it to \"awaiting_approval\"."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('quote_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Ticket Quotes",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/quotes",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "quotes"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Respond to Ticket Quote",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"decision\": \"approved\",\n    \"responder_note\": \"Customer approved by phone.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/quotes\/{{quote_ulid}}\/respond",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "quotes",
+                                "{{quote_ulid}}",
+                                "respond"
+                            ]
+                        },
+                        "description": "An 'approved' decision locks approved_amount onto the ticket, recalculates its balance, and auto-advances it to 'in_repair'; 'declined' auto-advances it to 'returned_as_is' instead \u2014 both only when that transition is still legal from the ticket's current status."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Cleanup (run last)",
+            "description": "Every destructive request from the folders above, in reverse dependency order, plus revoking the token this run's Auth \u2192 Issue Token created. Deliberately kept out of the main top-to-bottom flow \u2014 running these mid-collection would delete\/soft-delete records (Customers, Users, and every Catalog model are soft-deletable) that later folders still depend on via the ulid variables captured above; a soft-deleted record 404s on every subsequent lookup because of BranchScope\/the default Eloquent soft-delete scope. Run this folder by itself once you're done exploring, or just leave it \u2014 it's harmless to skip since re-running the collection from the top always creates fresh records.",
+            "item": [
+                {
+                    "name": "Delete Customer Device",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}\/devices\/{{customer_device_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}",
+                                "devices",
+                                "{{customer_device_ulid}}"
+                            ]
+                        },
+                        "description": "The one hard delete in this folder \u2014 CustomerDevice isn't soft-deletable."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Customer",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Product",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/products\/{{product_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "products",
+                                "{{product_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Product Category",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/product-categories\/{{product_category_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "product-categories",
+                                "{{product_category_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Service",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/services\/{{service_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "services",
+                                "{{service_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Device Model",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/device-models\/{{device_model_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "device-models",
+                                "{{device_model_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Device Brand",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/device-brands\/{{device_brand_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "device-brands",
+                                "{{device_brand_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete User",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/users\/{{user_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "users",
+                                "{{user_ulid}}"
+                            ]
+                        },
+                        "description": "A user can't delete themself \u2014 UserPolicy::delete blocks it (403). This is a different user than the one issuing the token, so it should succeed."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Revoke a Token",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/auth\/tokens\/{{tokenId}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "tokens",
+                                "{{tokenId}}"
+                            ]
+                        },
+                        "description": "tokenId is the numeric id from Auth > List My Tokens (this is the one route that isn't ULID-keyed \u2014 Sanctum's own token model). Defaults to 1, which \u2014 in a single fresh run of this collection \u2014 is the same token Logout below revokes too; running both is redundant but harmless (the second is a no-op 401\/404 against an already-gone token). Issue a second token first if you want to see this revoke a token you're not currently using."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Logout (revoke current token)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/auth\/logout",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "logout"
+                            ]
+                        },
+                        "description": "Run this absolutely last \u2014 every request above needs the token this invalidates."
+                    },
+                    "response": []
+                }
+            ]
+        }
     ]
-  },
-  "event": [
-    {
-      "listen": "prerequest",
-      "script": { "type": "text/javascript", "exec": [""] }
-    },
-    {
-      "listen": "test",
-      "script": { "type": "text/javascript", "exec": [""] }
-    }
-  ],
-  "variable": [
-    { "key": "baseUrl", "value": "http://127.0.0.1:8000/api/v1", "type": "string" },
-    { "key": "token", "value": "", "type": "string" },
-    { "key": "tokenId", "value": "1", "type": "string" },
-    { "key": "branch_ulid", "value": "", "type": "string" },
-    { "key": "owner_branch_ulid", "value": "", "type": "string" },
-    { "key": "user_ulid", "value": "", "type": "string" },
-    { "key": "device_brand_ulid", "value": "", "type": "string" },
-    { "key": "device_model_ulid", "value": "", "type": "string" },
-    { "key": "service_ulid", "value": "", "type": "string" },
-    { "key": "product_category_ulid", "value": "", "type": "string" },
-    { "key": "product_ulid", "value": "", "type": "string" },
-    { "key": "customer_ulid", "value": "", "type": "string" },
-    { "key": "customer_device_ulid", "value": "", "type": "string" },
-    { "key": "imei", "value": "490154203237518", "type": "string" }
-  ],
-  "item": [
-    {
-      "name": "Health",
-      "item": [
-        {
-          "name": "Liveness",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('is up', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().data.status).to.eql('up'); });"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Readiness",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/ready", "host": ["{{baseUrl}}"], "path": ["ready"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('reports dependency checks', () => {",
-                  "  pm.expect([200, 503]).to.include(pm.response.code);",
-                  "  const json = pm.response.json();",
-                  "  const checks = pm.response.code === 200 ? json.data.checks : json.error.details[0].status;",
-                  "  pm.expect(checks).to.have.property('database');",
-                  "});"
-                ]
-              }
-            }
-          ],
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Auth",
-      "item": [
-        {
-          "name": "Issue Token",
-          "request": {
-            "auth": { "type": "noauth" },
-            "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"ricardo.santos@fixmo.test\",\n  \"password\": \"password\",\n  \"device_name\": \"postman\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{baseUrl}}/auth/token", "host": ["{{baseUrl}}"], "path": ["auth", "token"] },
-            "description": "Issues a Sanctum bearer token. Every other request in this collection uses the `token` collection variable this sets automatically."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('token issued', () => pm.response.to.have.status(201));",
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data.token) { pm.collectionVariables.set('token', json.data.token); }"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "List My Tokens",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/auth/tokens", "host": ["{{baseUrl}}"], "path": ["auth", "tokens"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": { "type": "text/javascript", "exec": ["pm.test('OK', () => pm.response.to.have.status(200));"] }
-            }
-          ],
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Branches",
-      "description": "No destroy endpoint — closing a branch is `is_active = false` via Update, not a row removal (see design doc Flag 1). Requires `branches.manage` to create/update, `branches.view` to read (every seeded role has view).",
-      "item": [
-        {
-          "name": "List Branches",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/branches?filter[name]=&filter[code]=&filter[city]=&filter[is_active]=&sort=name&page=1",
-              "host": ["{{baseUrl}}"],
-              "path": ["branches"],
-              "query": [
-                { "key": "filter[name]", "value": "", "disabled": true },
-                { "key": "filter[code]", "value": "", "disabled": true },
-                { "key": "filter[city]", "value": "", "disabled": true },
-                { "key": "filter[is_active]", "value": "true", "disabled": true },
-                { "key": "sort", "value": "name", "disabled": true },
-                { "key": "page", "value": "1", "disabled": true }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Find My Branch (used by Users/Customers below)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/branches?filter[code]=QC",
-              "host": ["{{baseUrl}}"],
-              "path": ["branches"],
-              "query": [{ "key": "filter[code]", "value": "QC" }]
-            },
-            "description": "Looks up the seeded owner's own branch (Quezon City, the demo user in Auth > Issue Token belongs here) and stores it as owner_branch_ulid. Deliberately NOT the branch created below — BranchScope hides records in a different branch than the authenticated user's own, even for an owner, so Create User/Create Customer need this branch, not a freshly created one, for the Show/Update requests underneath them to find anything."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('found', () => pm.response.to.have.status(200));",
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data[0] && json.data[0].ulid) { pm.collectionVariables.set('owner_branch_ulid', json.data[0].ulid); }"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Create Branch",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"FixMo Phone Repair — Davao\",\n  \"code\": \"DVO\",\n  \"legal_name\": \"FixMo Phone Repair Services Corp.\",\n  \"address_line1\": \"123 Rizal St.\",\n  \"city\": \"Davao City\",\n  \"province\": \"Davao del Sur\",\n  \"postal_code\": \"8000\",\n  \"contact_phone\": \"09171234567\",\n  \"contact_email\": \"davao@fixmo.test\",\n  \"tin\": \"123456789000\",\n  \"bir_permit_no\": \"BIR-000000001\",\n  \"vat_registered\": true,\n  \"receipt_header_text\": \"FixMo Phone Repair Services\",\n  \"receipt_footer_text\": \"Thank you for choosing FixMo!\",\n  \"timezone\": \"Asia/Manila\",\n  \"is_active\": true\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{baseUrl}}/branches", "host": ["{{baseUrl}}"], "path": ["branches"] }
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('created', () => pm.response.to.have.status(201));",
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data.ulid) { pm.collectionVariables.set('branch_ulid', json.data.ulid); }"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Show Branch",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/branches/{{branch_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["branches", "{{branch_ulid}}"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Update Branch",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"FixMo Phone Repair — Davao (Relocated)\",\n  \"is_active\": true\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/branches/{{branch_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["branches", "{{branch_ulid}}"]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Users",
-      "description": "Requires `users.manage` to create/update/delete, `users.view` to read (owner + manager only in the seeded permission set).",
-      "item": [
-        {
-          "name": "List Users",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/users?filter[name]=&filter[employee_code]=&filter[email]=&filter[branch_id]=&filter[is_active]=&sort=name&page=1",
-              "host": ["{{baseUrl}}"],
-              "path": ["users"],
-              "query": [
-                { "key": "filter[name]", "value": "", "disabled": true },
-                { "key": "filter[employee_code]", "value": "", "disabled": true },
-                { "key": "filter[email]", "value": "", "disabled": true },
-                { "key": "filter[branch_id]", "value": "", "disabled": true },
-                { "key": "filter[is_active]", "value": "true", "disabled": true },
-                { "key": "sort", "value": "name", "disabled": true },
-                { "key": "page", "value": "1", "disabled": true }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Create User",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"branch_ulid\": \"{{owner_branch_ulid}}\",\n  \"employee_code\": \"EMP-9001\",\n  \"name\": \"Nico Bautista\",\n  \"email\": \"nico.bautista@fixmo.test\",\n  \"password\": \"password123\",\n  \"role\": \"technician\",\n  \"is_active\": true\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] },
-            "description": "role must be one of owner, manager, cashier, technician. Uses owner_branch_ulid (run Branches > Find My Branch first) rather than a freshly created branch — see that request's description for why."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('created', () => pm.response.to.have.status(201));",
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data.ulid) { pm.collectionVariables.set('user_ulid', json.data.ulid); }"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Show User",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": { "raw": "{{baseUrl}}/users/{{user_ulid}}", "host": ["{{baseUrl}}"], "path": ["users", "{{user_ulid}}"] }
-          },
-          "response": []
-        },
-        {
-          "name": "Update User",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"name\": \"Nico Bautista Jr.\",\n  \"role\": \"manager\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{baseUrl}}/users/{{user_ulid}}", "host": ["{{baseUrl}}"], "path": ["users", "{{user_ulid}}"] }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Catalog",
-      "description": "Requires `catalog.manage` to create/update/delete, `catalog.view` to read (every seeded role has view).",
-      "item": [
-        {
-          "name": "Device Brands",
-          "item": [
-            {
-              "name": "List Device Brands",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/device-brands?filter[name]=&filter[is_active]=&sort=name&page=1",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["device-brands"],
-                  "query": [
-                    { "key": "filter[name]", "value": "", "disabled": true },
-                    { "key": "filter[is_active]", "value": "true", "disabled": true },
-                    { "key": "sort", "value": "name", "disabled": true },
-                    { "key": "page", "value": "1", "disabled": true }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Create Device Brand",
-              "request": {
-                "method": "POST",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"Huawei\",\n  \"logo_ref\": null,\n  \"is_active\": true\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": { "raw": "{{baseUrl}}/device-brands", "host": ["{{baseUrl}}"], "path": ["device-brands"] }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('created', () => pm.response.to.have.status(201));",
-                      "const json = pm.response.json();",
-                      "if (json.data && json.data.ulid) { pm.collectionVariables.set('device_brand_ulid', json.data.ulid); }"
-                    ]
-                  }
-                }
-              ],
-              "response": []
-            },
-            {
-              "name": "Show Device Brand",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/device-brands/{{device_brand_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["device-brands", "{{device_brand_ulid}}"]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Update Device Brand",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"Huawei Technologies\"\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/device-brands/{{device_brand_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["device-brands", "{{device_brand_ulid}}"]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Device Models",
-          "item": [
-            {
-              "name": "List Device Models",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/device-models?filter[name]=&filter[device_brand_id]=&filter[is_active]=&sort=name&page=1",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["device-models"],
-                  "query": [
-                    { "key": "filter[name]", "value": "", "disabled": true },
-                    { "key": "filter[device_brand_id]", "value": "", "disabled": true },
-                    { "key": "filter[is_active]", "value": "true", "disabled": true },
-                    { "key": "sort", "value": "name", "disabled": true },
-                    { "key": "page", "value": "1", "disabled": true }
-                  ]
-                },
-                "description": "filter[device_brand_id] takes the brand's internal id, not its ulid, per spatie/laravel-query-builder's exact-match filter — a known asymmetry versus request-body fields, noted for whoever builds an SDK against this."
-              },
-              "response": []
-            },
-            {
-              "name": "Create Device Model",
-              "request": {
-                "method": "POST",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"device_brand_ulid\": \"{{device_brand_ulid}}\",\n  \"name\": \"Nova 12\",\n  \"release_year\": 2024,\n  \"aliases\": [\"Huawei Nova 12\"],\n  \"is_active\": true\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": { "raw": "{{baseUrl}}/device-models", "host": ["{{baseUrl}}"], "path": ["device-models"] },
-                "description": "Run Device Brands > Create Device Brand first so device_brand_ulid is set."
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('created', () => pm.response.to.have.status(201));",
-                      "const json = pm.response.json();",
-                      "if (json.data && json.data.ulid) { pm.collectionVariables.set('device_model_ulid', json.data.ulid); }"
-                    ]
-                  }
-                }
-              ],
-              "response": []
-            },
-            {
-              "name": "Show Device Model",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/device-models/{{device_model_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["device-models", "{{device_model_ulid}}"]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Update Device Model",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"Nova 12 Pro\"\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/device-models/{{device_model_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["device-models", "{{device_model_ulid}}"]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Services",
-          "item": [
-            {
-              "name": "List Services",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/services?filter[name]=&filter[category]=&filter[is_active]=&sort=name&page=1",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["services"],
-                  "query": [
-                    { "key": "filter[name]", "value": "", "disabled": true },
-                    { "key": "filter[category]", "value": "", "disabled": true },
-                    { "key": "filter[is_active]", "value": "true", "disabled": true },
-                    { "key": "sort", "value": "name", "disabled": true },
-                    { "key": "page", "value": "1", "disabled": true }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Create Service",
-              "request": {
-                "method": "POST",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"Screen Replacement\",\n  \"category\": \"screen\",\n  \"default_price\": 1200,\n  \"default_duration_minutes\": 45,\n  \"warranty_days\": 30,\n  \"is_active\": true\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": { "raw": "{{baseUrl}}/services", "host": ["{{baseUrl}}"], "path": ["services"] }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('created', () => pm.response.to.have.status(201));",
-                      "const json = pm.response.json();",
-                      "if (json.data && json.data.ulid) { pm.collectionVariables.set('service_ulid', json.data.ulid); }"
-                    ]
-                  }
-                }
-              ],
-              "response": []
-            },
-            {
-              "name": "Show Service",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/services/{{service_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["services", "{{service_ulid}}"]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Update Service",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"default_price\": 1350\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/services/{{service_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["services", "{{service_ulid}}"]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Product Categories",
-          "item": [
-            {
-              "name": "List Product Categories",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/product-categories?filter[name]=&filter[parent_id]=&filter[is_active]=&sort=name&page=1",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["product-categories"],
-                  "query": [
-                    { "key": "filter[name]", "value": "", "disabled": true },
-                    { "key": "filter[parent_id]", "value": "", "disabled": true },
-                    { "key": "filter[is_active]", "value": "true", "disabled": true },
-                    { "key": "sort", "value": "name", "disabled": true },
-                    { "key": "page", "value": "1", "disabled": true }
-                  ]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Create Product Category",
-              "request": {
-                "method": "POST",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"Charging Ports\",\n  \"parent_ulid\": null,\n  \"is_active\": true\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": { "raw": "{{baseUrl}}/product-categories", "host": ["{{baseUrl}}"], "path": ["product-categories"] }
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('created', () => pm.response.to.have.status(201));",
-                      "const json = pm.response.json();",
-                      "if (json.data && json.data.ulid) { pm.collectionVariables.set('product_category_ulid', json.data.ulid); }"
-                    ]
-                  }
-                }
-              ],
-              "response": []
-            },
-            {
-              "name": "Show Product Category",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/product-categories/{{product_category_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["product-categories", "{{product_category_ulid}}"]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Update Product Category",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"name\": \"Charging Ports & Flex Cables\"\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/product-categories/{{product_category_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["product-categories", "{{product_category_ulid}}"]
-                }
-              },
-              "response": []
-            }
-          ]
-        },
-        {
-          "name": "Products",
-          "item": [
-            {
-              "name": "List Products",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/products?filter[name]=&filter[sku]=&filter[type]=&filter[product_category_id]=&filter[device_brand_id]=&filter[is_active]=&filter[is_serialized]=&sort=name&include=compatibleDeviceModels&page=1",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["products"],
-                  "query": [
-                    { "key": "filter[name]", "value": "", "disabled": true },
-                    { "key": "filter[sku]", "value": "", "disabled": true },
-                    { "key": "filter[type]", "value": "handset", "disabled": true },
-                    { "key": "filter[product_category_id]", "value": "", "disabled": true },
-                    { "key": "filter[device_brand_id]", "value": "", "disabled": true },
-                    { "key": "filter[is_active]", "value": "true", "disabled": true },
-                    { "key": "filter[is_serialized]", "value": "true", "disabled": true },
-                    { "key": "sort", "value": "name", "disabled": true },
-                    { "key": "include", "value": "compatibleDeviceModels", "disabled": true },
-                    { "key": "page", "value": "1", "disabled": true }
-                  ]
-                },
-                "description": "`cost` only appears in the response for a user with `reports.margin.view` (the seeded owner/manager) — a cashier sees `selling_price` but not `cost`. category and brand are always eager-loaded; compatibleDeviceModels is opt-in via `include=`."
-              },
-              "response": []
-            },
-            {
-              "name": "Create Product",
-              "request": {
-                "method": "POST",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"sku\": \"SAM-A15-001\",\n  \"barcode\": \"1234567890123\",\n  \"name\": \"Samsung Galaxy A15\",\n  \"product_category_ulid\": \"{{product_category_ulid}}\",\n  \"device_brand_ulid\": \"{{device_brand_ulid}}\",\n  \"type\": \"handset\",\n  \"cost\": 8000,\n  \"selling_price\": 11500,\n  \"is_serialized\": true,\n  \"reorder_point\": 2,\n  \"track_inventory\": true,\n  \"is_active\": true,\n  \"compatible_device_model_ulids\": [\"{{device_model_ulid}}\"]\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": { "raw": "{{baseUrl}}/products", "host": ["{{baseUrl}}"], "path": ["products"] },
-                "description": "type is one of handset, accessory, part. Run Product Categories > Create and Device Brands > Create first so the ulid variables are set."
-              },
-              "event": [
-                {
-                  "listen": "test",
-                  "script": {
-                    "type": "text/javascript",
-                    "exec": [
-                      "pm.test('created', () => pm.response.to.have.status(201));",
-                      "const json = pm.response.json();",
-                      "if (json.data && json.data.ulid) { pm.collectionVariables.set('product_ulid', json.data.ulid); }"
-                    ]
-                  }
-                }
-              ],
-              "response": []
-            },
-            {
-              "name": "Show Product",
-              "request": {
-                "method": "GET",
-                "header": [],
-                "url": {
-                  "raw": "{{baseUrl}}/products/{{product_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["products", "{{product_ulid}}"]
-                }
-              },
-              "response": []
-            },
-            {
-              "name": "Update Product",
-              "request": {
-                "method": "PATCH",
-                "header": [
-                  { "key": "Content-Type", "value": "application/json" },
-                  { "key": "Idempotency-Key", "value": "{{$guid}}" }
-                ],
-                "body": {
-                  "mode": "raw",
-                  "raw": "{\n  \"selling_price\": 11999\n}",
-                  "options": { "raw": { "language": "json" } }
-                },
-                "url": {
-                  "raw": "{{baseUrl}}/products/{{product_ulid}}",
-                  "host": ["{{baseUrl}}"],
-                  "path": ["products", "{{product_ulid}}"]
-                }
-              },
-              "response": []
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "name": "Customers",
-      "description": "Requires `customers.manage` to create/update/delete, `customers.view` to read (every seeded role has view). mobile accepts common PH formats (09XXXXXXXXX, +639XXXXXXXXX, spaces/dashes) and is normalized to +63XXXXXXXXXX before storing.",
-      "item": [
-        {
-          "name": "List Customers",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/customers?filter[name]=&filter[mobile]=&filter[branch_id]=&filter[is_blacklisted]=&sort=name&page=1",
-              "host": ["{{baseUrl}}"],
-              "path": ["customers"],
-              "query": [
-                { "key": "filter[name]", "value": "", "disabled": true },
-                { "key": "filter[mobile]", "value": "", "disabled": true },
-                { "key": "filter[branch_id]", "value": "", "disabled": true },
-                { "key": "filter[is_blacklisted]", "value": "true", "disabled": true },
-                { "key": "sort", "value": "name", "disabled": true },
-                { "key": "page", "value": "1", "disabled": true }
-              ]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Create Customer",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"branch_ulid\": \"{{owner_branch_ulid}}\",\n  \"name\": \"Juan Dela Cruz\",\n  \"mobile\": \"0917 123 4567\",\n  \"email\": \"juan.delacruz@example.com\",\n  \"address\": \"123 Mabini St., Quezon City\",\n  \"notes\": \"Prefers SMS updates.\",\n  \"is_blacklisted\": false\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": { "raw": "{{baseUrl}}/customers", "host": ["{{baseUrl}}"], "path": ["customers"] },
-            "description": "Uses owner_branch_ulid (see Branches > Find My Branch) so the authenticated owner's BranchScope can actually see this record in the Show/Update requests below."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('created', () => pm.response.to.have.status(201));",
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data.ulid) { pm.collectionVariables.set('customer_ulid', json.data.ulid); }",
-                  "pm.test('mobile normalized', () => pm.expect(json.data.mobile).to.eql('+639171234567'));"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Show Customer",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/customers/{{customer_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["customers", "{{customer_ulid}}"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Update Customer",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"email\": \"juan.dc@example.com\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/customers/{{customer_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["customers", "{{customer_ulid}}"]
-            }
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Customer Devices",
-      "description": "Nested under a customer. imei accepts raw digits or common separators, is normalized, and validated as 15 digits passing the Luhn checksum (App\\Rules\\ValidImei). Same customers.view/customers.manage permissions as Customers.",
-      "item": [
-        {
-          "name": "List Customer's Devices",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/customers/{{customer_ulid}}/devices",
-              "host": ["{{baseUrl}}"],
-              "path": ["customers", "{{customer_ulid}}", "devices"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Create Customer Device",
-          "request": {
-            "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"device_model_ulid\": \"{{device_model_ulid}}\",\n  \"imei\": \"{{imei}}\",\n  \"serial_number\": null,\n  \"color\": \"Midnight Black\",\n  \"notes\": \"Screen protector already applied.\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/customers/{{customer_ulid}}/devices",
-              "host": ["{{baseUrl}}"],
-              "path": ["customers", "{{customer_ulid}}", "devices"]
-            },
-            "description": "The default {{imei}} (490154203237518) is a well-known valid Luhn-checksum test IMEI. Run Customers > Create Customer and Catalog > Device Models > Create first."
-          },
-          "event": [
-            {
-              "listen": "test",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "pm.test('created', () => pm.response.to.have.status(201));",
-                  "const json = pm.response.json();",
-                  "if (json.data && json.data.ulid) { pm.collectionVariables.set('customer_device_ulid', json.data.ulid); }"
-                ]
-              }
-            }
-          ],
-          "response": []
-        },
-        {
-          "name": "Show Customer Device",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/customers/{{customer_ulid}}/devices/{{customer_device_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["customers", "{{customer_ulid}}", "devices", "{{customer_device_ulid}}"]
-            },
-            "description": "404s if customer_device_ulid doesn't belong to customer_ulid — devices are checked against their parent customer, not just looked up globally."
-          },
-          "response": []
-        },
-        {
-          "name": "Update Customer Device",
-          "request": {
-            "method": "PATCH",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Idempotency-Key", "value": "{{$guid}}" }
-            ],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"color\": \"Phantom Black\"\n}",
-              "options": { "raw": { "language": "json" } }
-            },
-            "url": {
-              "raw": "{{baseUrl}}/customers/{{customer_ulid}}/devices/{{customer_device_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["customers", "{{customer_ulid}}", "devices", "{{customer_device_ulid}}"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Device History by IMEI (flagship lookup)",
-          "request": {
-            "method": "GET",
-            "header": [],
-            "url": {
-              "raw": "{{baseUrl}}/devices/by-imei/{{imei}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["devices", "by-imei", "{{imei}}"]
-            },
-            "description": "Returns every customer_devices row for this IMEI across every customer — and every branch — that ever brought it in, not scoped to one customer or one branch. This is the differentiator described in docs/design/01-domain-design.md §2.3: a repeat repair is recognized even if the customer's first visit was at a different branch."
-          },
-          "response": []
-        }
-      ]
-    },
-    {
-      "name": "Cleanup (run last)",
-      "description": "Every destructive request from the folders above, in reverse dependency order, plus revoking the token this run's Auth → Issue Token created. Deliberately kept out of the main top-to-bottom flow — running these mid-collection would delete/soft-delete records (Customers, Users, and every Catalog model are soft-deletable) that later folders still depend on via the ulid variables captured above; a soft-deleted record 404s on every subsequent lookup because of BranchScope/the default Eloquent soft-delete scope. Run this folder by itself once you're done exploring, or just leave it — it's harmless to skip since re-running the collection from the top always creates fresh records.",
-      "item": [
-        {
-          "name": "Delete Customer Device",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/customers/{{customer_ulid}}/devices/{{customer_device_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["customers", "{{customer_ulid}}", "devices", "{{customer_device_ulid}}"]
-            },
-            "description": "The one hard delete in this folder — CustomerDevice isn't soft-deletable."
-          },
-          "response": []
-        },
-        {
-          "name": "Delete Customer",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/customers/{{customer_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["customers", "{{customer_ulid}}"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Delete Product",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/products/{{product_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["products", "{{product_ulid}}"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Delete Product Category",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/product-categories/{{product_category_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["product-categories", "{{product_category_ulid}}"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Delete Service",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/services/{{service_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["services", "{{service_ulid}}"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Delete Device Model",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/device-models/{{device_model_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["device-models", "{{device_model_ulid}}"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Delete Device Brand",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/device-brands/{{device_brand_ulid}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["device-brands", "{{device_brand_ulid}}"]
-            }
-          },
-          "response": []
-        },
-        {
-          "name": "Delete User",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": { "raw": "{{baseUrl}}/users/{{user_ulid}}", "host": ["{{baseUrl}}"], "path": ["users", "{{user_ulid}}"] },
-            "description": "A user can't delete themself — UserPolicy::delete blocks it (403). This is a different user than the one issuing the token, so it should succeed."
-          },
-          "response": []
-        },
-        {
-          "name": "Revoke a Token",
-          "request": {
-            "method": "DELETE",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": {
-              "raw": "{{baseUrl}}/auth/tokens/{{tokenId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["auth", "tokens", "{{tokenId}}"]
-            },
-            "description": "tokenId is the numeric id from Auth > List My Tokens (this is the one route that isn't ULID-keyed — Sanctum's own token model). Defaults to 1, which — in a single fresh run of this collection — is the same token Logout below revokes too; running both is redundant but harmless (the second is a no-op 401/404 against an already-gone token). Issue a second token first if you want to see this revoke a token you're not currently using."
-          },
-          "response": []
-        },
-        {
-          "name": "Logout (revoke current token)",
-          "request": {
-            "method": "POST",
-            "header": [{ "key": "Idempotency-Key", "value": "{{$guid}}" }],
-            "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] },
-            "description": "Run this absolutely last — every request above needs the token this invalidates."
-          },
-          "response": []
-        }
-      ]
-    }
-  ]
 }

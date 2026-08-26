@@ -10,6 +10,7 @@ use App\Repositories\Contracts\DeviceBrandRepositoryInterface;
 use App\Repositories\Contracts\DeviceModelRepositoryInterface;
 use App\Repositories\Contracts\ProductCategoryRepositoryInterface;
 use App\Repositories\Contracts\ProductRepositoryInterface;
+use App\Repositories\Contracts\RepairTicketRepositoryInterface;
 use App\Repositories\Contracts\ServiceCatalogRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Repositories\CustomerDeviceRepository;
@@ -18,6 +19,7 @@ use App\Repositories\DeviceBrandRepository;
 use App\Repositories\DeviceModelRepository;
 use App\Repositories\ProductCategoryRepository;
 use App\Repositories\ProductRepository;
+use App\Repositories\RepairTicketRepository;
 use App\Repositories\ServiceCatalogRepository;
 use App\Repositories\UserRepository;
 use Illuminate\Support\ServiceProvider;
@@ -35,6 +37,7 @@ class RepositoryServiceProvider extends ServiceProvider
         ProductRepositoryInterface::class => ProductRepository::class,
         CustomerRepositoryInterface::class => CustomerRepository::class,
         CustomerDeviceRepositoryInterface::class => CustomerDeviceRepository::class,
+        RepairTicketRepositoryInterface::class => RepairTicketRepository::class,
     ];
 
     public function register(): void

@@ -10,6 +10,10 @@ use App\Http\Controllers\Api\V1\Catalog\ServiceController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\CustomerDeviceController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\RepairTicketController;
+use App\Http\Controllers\Api\V1\TicketLineController;
+use App\Http\Controllers\Api\V1\TicketPhotoController;
+use App\Http\Controllers\Api\V1\TicketQuoteController;
 use App\Http\Controllers\Api\V1\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -45,6 +49,23 @@ Route::prefix('v1')->group(function (): void {
         Route::apiResource('customers.devices', CustomerDeviceController::class)
             ->parameters(['devices' => 'device']);
         Route::get('/devices/by-imei/{imei}', [CustomerDeviceController::class, 'historyByImei']);
+
+        // Repair tickets — Stage 5: state machine, timeline, photos, quotes.
+        Route::apiResource('tickets', RepairTicketController::class)
+            ->parameters(['tickets' => 'ticket'])
+            ->except(['destroy']);
+        Route::post('/tickets/{ticket}/transition', [RepairTicketController::class, 'transition']);
+        Route::get('/tickets/{ticket}/events', [RepairTicketController::class, 'events']);
+
+        Route::get('/tickets/{ticket}/lines', [TicketLineController::class, 'index']);
+        Route::post('/tickets/{ticket}/lines', [TicketLineController::class, 'store']);
+
+        Route::get('/tickets/{ticket}/photos', [TicketPhotoController::class, 'index']);
+        Route::post('/tickets/{ticket}/photos', [TicketPhotoController::class, 'store']);
+
+        Route::get('/tickets/{ticket}/quotes', [TicketQuoteController::class, 'index']);
+        Route::post('/tickets/{ticket}/quotes', [TicketQuoteController::class, 'store']);
+        Route::post('/tickets/{ticket}/quotes/{quote}/respond', [TicketQuoteController::class, 'respond']);
     });
 
     // Exists only so the exception-handling test suite can assert the 500
