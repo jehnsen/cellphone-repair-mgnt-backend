@@ -12,6 +12,10 @@ return new class extends Migration
             $table->id();
             $table->ulid('ulid')->unique();
             $table->string('name');
+            // Short code embedded in document numbers (JO-{code}-YYYYMM-####)
+            // so per-branch sequences (see `sequences` table) still produce
+            // globally unique ticket/sale numbers across branches.
+            $table->string('code', 10)->unique();
             $table->string('legal_name')->nullable();
             $table->string('address_line1')->nullable();
             $table->string('address_line2')->nullable();
