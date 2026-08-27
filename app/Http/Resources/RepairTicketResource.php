@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Models\RepairTicket;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\RepairTicket */
+/** @mixin RepairTicket */
 class RepairTicketResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -47,6 +48,18 @@ class RepairTicketResource extends JsonResource
             'customer' => new CustomerResource($this->whenLoaded('customer')),
             'customer_device' => new CustomerDeviceResource($this->whenLoaded('customerDevice')),
             'assigned_technician' => new UserResource($this->whenLoaded('assignedTechnician')),
+            // Compact summary for the detail header only — `show` loads
+            // this, the board's `index` deliberately does not. The full
+            // record is GET /tickets/{ulid}/finding. `null` until recorded.
+            'finding' => $this->when(
+                $this->relationLoaded('finding'),
+                fn () => $this->finding === null ? null : [
+                    'summary' => $this->finding->summary,
+                    'root_cause' => $this->finding->root_cause,
+                    'resolution' => $this->finding->resolution,
+                    'qc_passed' => $this->finding->qc_passed,
+                ],
+            ),
             // Backs GET /public/verify/{token} (chain-of-custody proof) —
             // staff embed this in the printed claim stub/warranty slip as a
             // QR code. Not a secret the way claim_code is, but still staff-only.

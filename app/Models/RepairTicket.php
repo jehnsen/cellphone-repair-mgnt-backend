@@ -116,6 +116,11 @@ class RepairTicket extends Model
         return $this->hasOne(VerificationToken::class);
     }
 
+    public function finding(): HasOne
+    {
+        return $this->hasOne(RepairFinding::class);
+    }
+
     public function payments()
     {
         return Payment::where('payable_type', 'repair_ticket')->where('payable_id', $this->id);

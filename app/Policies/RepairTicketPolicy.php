@@ -49,6 +49,17 @@ class RepairTicketPolicy
         return $user->can('tickets.update');
     }
 
+    /** Cashiers answer the phone, so they can read the findings record — but not write it. */
+    public function viewFinding(User $user, RepairTicket $ticket): bool
+    {
+        return $user->can('tickets.view');
+    }
+
+    public function recordFinding(User $user, RepairTicket $ticket): bool
+    {
+        return $user->can('tickets.update');
+    }
+
     /** Collecting money is a POS action even when it's against a ticket, not a sale. */
     public function recordPayment(User $user, RepairTicket $ticket): bool
     {

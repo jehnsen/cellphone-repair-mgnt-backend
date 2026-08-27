@@ -54,7 +54,7 @@ class RepairTicketController extends Controller
 
         $this->tickets->loadDisplayRelations($ticket);
 
-        return new RepairTicketResource($ticket->load('lines'));
+        return new RepairTicketResource($ticket->load('lines', 'finding'));
     }
 
     public function update(UpdateRepairTicketRequest $request, RepairTicket $ticket): RepairTicketResource

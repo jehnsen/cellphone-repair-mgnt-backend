@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AcquisitionController;
 use App\Http\Controllers\Api\V1\Auth\TokenController;
 use App\Http\Controllers\Api\V1\BranchController;
 use App\Http\Controllers\Api\V1\Catalog\DeviceBrandController;
@@ -8,7 +9,6 @@ use App\Http\Controllers\Api\V1\Catalog\ProductCategoryController;
 use App\Http\Controllers\Api\V1\Catalog\ProductController;
 use App\Http\Controllers\Api\V1\Catalog\ServiceController;
 use App\Http\Controllers\Api\V1\CustomerController;
-use App\Http\Controllers\Api\V1\AcquisitionController;
 use App\Http\Controllers\Api\V1\CustomerDeviceController;
 use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\GoodsReceiptController;
@@ -16,10 +16,12 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ImeiVerificationController;
 use App\Http\Controllers\Api\V1\InstallmentPlanController;
 use App\Http\Controllers\Api\V1\InventoryController;
+use App\Http\Controllers\Api\V1\MetaController;
 use App\Http\Controllers\Api\V1\PartSwapController;
 use App\Http\Controllers\Api\V1\PublicVerificationController;
 use App\Http\Controllers\Api\V1\PurchaseOrderController;
 use App\Http\Controllers\Api\V1\RefurbJobController;
+use App\Http\Controllers\Api\V1\RepairFindingController;
 use App\Http\Controllers\Api\V1\RepairTicketController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SaleController;
@@ -54,6 +56,10 @@ Route::prefix('v1')->group(function (): void {
             ->whereNumber('tokenId');
         Route::post('/auth/logout', [TokenController::class, 'destroyCurrent']);
 
+        // Controlled vocabularies (repair-findings root_cause / defects /
+        // resolution) so the frontend never keeps a second hardcoded copy.
+        Route::get('/meta/enums', [MetaController::class, 'enums']);
+
         // Identity & shop — no destroy: branches deactivate via update(),
         // they don't get removed (see docs/design/01-domain-design.md Flag 1).
         Route::apiResource('branches', BranchController::class)->except(['destroy']);
@@ -78,6 +84,13 @@ Route::prefix('v1')->group(function (): void {
             ->except(['destroy']);
         Route::post('/tickets/{ticket}/transition', [RepairTicketController::class, 'transition']);
         Route::get('/tickets/{ticket}/events', [RepairTicketController::class, 'events']);
+
+        // Findings & root cause — one record per ticket, PUT is an upsert.
+        // A released ticket's record is closed (409); corrections go on the
+        // timeline, which is also where every edit is audited
+        // (finding_recorded events). See RepairFindingService.
+        Route::get('/tickets/{ticket}/finding', [RepairFindingController::class, 'show']);
+        Route::put('/tickets/{ticket}/finding', [RepairFindingController::class, 'upsert']);
 
         Route::get('/tickets/{ticket}/lines', [TicketLineController::class, 'index']);
         Route::post('/tickets/{ticket}/lines', [TicketLineController::class, 'store']);

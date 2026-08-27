@@ -334,6 +334,35 @@
             ]
         },
         {
+            "name": "Meta",
+            "item": [
+                {
+                    "name": "Get Enums",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/meta\/enums",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "meta",
+                                "enums"
+                            ]
+                        },
+                        "description": "Controlled vocabularies the frontend would otherwise hardcode. Currently the repair-findings enums: root_cause, defects, resolution."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
             "name": "Branches",
             "description": "No destroy endpoint \u2014 closing a branch is `is_active = false` via Update, not a row removal (see design doc Flag 1). Requires `branches.manage` to create\/update, `branches.view` to read (every seeded role has view).",
             "item": [
@@ -1996,6 +2025,69 @@
                             ]
                         },
                         "description": "Cursor-paginated append-only event ledger. Use the response's meta.next_cursor (per Laravel's cursorPaginate shape) as ?cursor=... to page further back."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Ticket Finding",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/finding",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "finding"
+                            ]
+                        },
+                        "description": "The one findings record for this ticket (what was wrong, why, and what was done). 404 NOT_FOUND until PUT has been called at least once. tickets.view \u2014 cashiers can read."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Upsert Ticket Finding",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"summary\": \"Charging port pins corroded from liquid ingress.\",\n    \"details\": \"Board otherwise clean. Ultrasonic cleaned, port flex replaced.\",\n    \"root_cause\": \"liquid_ingress\",\n    \"defects\": [\n        \"charging_port\",\n        \"sim_reader\"\n    ],\n    \"resolution\": \"part_replaced\",\n    \"technician_notes\": \"Advise customer against non-original chargers.\",\n    \"qc_passed\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/finding",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "finding"
+                            ]
+                        },
+                        "description": "Upsert: 201 on first call, 200 thereafter \u2014 one record per ticket, edited in place. Every call appends a finding_recorded timeline event (that is what preserves history). qc_checked_at \/ qc_checked_by are stamped server-side when qc_passed first goes from null to a real verdict. root_cause=other or resolution=unrepairable makes `details` required. A released ticket returns 409 INVALID_STATUS_TRANSITION. Enum values come from GET \/meta\/enums. tickets.update."
                     },
                     "response": []
                 },
