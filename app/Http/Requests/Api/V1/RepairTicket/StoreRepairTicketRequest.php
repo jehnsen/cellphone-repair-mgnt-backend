@@ -13,6 +13,17 @@ class StoreRepairTicketRequest extends FormRequest
         return $this->user()->can('create', RepairTicket::class);
     }
 
+    protected function prepareForValidation(): void
+    {
+        // A method with no accompanying secret is the same as no unlock
+        // info at all — the intake form defaults the method dropdown to
+        // 'pin' even when the tech leaves the value blank. Normalize that
+        // to 'none' so it doesn't trip the required_if rule below.
+        if ($this->has('unlock_method') && ! $this->filled('unlock_value')) {
+            $this->merge(['unlock_method' => 'none', 'unlock_value' => null]);
+        }
+    }
+
     public function rules(): array
     {
         return [
@@ -28,8 +39,11 @@ class StoreRepairTicketRequest extends FormRequest
                 'software', 'camera', 'speaker', 'board_level',
             ])],
 
+            // Both optional: a customer can decline to hand over an unlock
+            // secret at intake. If they do give a method other than 'none',
+            // the value is still expected alongside it.
             'unlock_method' => ['nullable', Rule::in(['pin', 'pattern', 'password', 'none'])],
-            'unlock_value' => ['nullable', 'string', 'required_unless:unlock_method,none'],
+            'unlock_value' => ['nullable', 'string', 'required_if:unlock_method,pin,pattern,password'],
 
             'accessories_turned_over' => ['nullable', 'array'],
             'accessories_turned_over.*' => ['string', Rule::in(['sim', 'sd_card', 'case', 'charger', 'box'])],

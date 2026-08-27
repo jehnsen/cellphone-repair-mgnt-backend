@@ -39,6 +39,56 @@ it('creates a repair ticket by resolving ULIDs and snapshotting device details',
     expect($response->json('data'))->not->toHaveKey('id');
 });
 
+it('creates a repair ticket with only the required fields', function () {
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('manager', $branch);
+    [$customer, $device] = createTicketFixtures($branch);
+
+    // No reported_problem, no unlock method/value, no downpayment — a
+    // customer who declines to say more than "it's broken" at intake.
+    $this->withToken($token)->postJson('/api/v1/tickets', [
+        'branch_ulid' => $branch->ulid,
+        'customer_ulid' => $customer->ulid,
+        'customer_device_ulid' => $device->ulid,
+        'terms_accepted' => true,
+    ])->assertStatus(201)->assertJsonPath('data.status', 'received');
+});
+
+it('treats an unlock method with a blank value as no unlock info', function () {
+    $branch = Branch::factory()->create();
+    [$manager, $token] = userWithRole('manager', $branch);
+    [$customer, $device] = createTicketFixtures($branch);
+
+    // The intake form defaults the method to 'pin' even when the tech
+    // leaves the value blank — this must not 422.
+    $response = $this->withToken($token)->postJson('/api/v1/tickets', [
+        'branch_ulid' => $branch->ulid,
+        'customer_ulid' => $customer->ulid,
+        'customer_device_ulid' => $device->ulid,
+        'unlock_method' => 'pin',
+        'unlock_value' => null,
+        'terms_accepted' => true,
+    ])->assertStatus(201);
+
+    expect(RepairTicket::where('ulid', $response->json('data.ulid'))->sole()->unlock_method)->toBe('none');
+});
+
+it('still requires the unlock value when a method is paired with a real one later', function () {
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('manager', $branch);
+    [$customer, $device] = createTicketFixtures($branch);
+
+    // Sending only unlock_value with no method still stores both.
+    $this->withToken($token)->postJson('/api/v1/tickets', [
+        'branch_ulid' => $branch->ulid,
+        'customer_ulid' => $customer->ulid,
+        'customer_device_ulid' => $device->ulid,
+        'unlock_method' => 'pin',
+        'unlock_value' => '1234',
+        'terms_accepted' => true,
+    ])->assertStatus(201)->assertJsonPath('data.status', 'received');
+});
+
 it('rejects ticket creation without terms accepted', function () {
     $branch = Branch::factory()->create();
     [, $token] = userWithRole('manager', $branch);

@@ -34,6 +34,34 @@ it('rejects an invalid PH mobile number', function () {
     ])->assertStatus(422)->assertJsonPath('error.code', 'VALIDATION_FAILED');
 });
 
+it('creates a walk-in customer with no mobile number', function () {
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('cashier', $branch);
+
+    $this->withToken($token)->postJson('/api/v1/customers', [
+        'branch_ulid' => $branch->ulid,
+        'name' => 'Walk In',
+    ])->assertStatus(201)->assertJsonPath('data.mobile', null);
+});
+
+it('rejects a second customer with a mobile already used in the branch', function () {
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('cashier', $branch);
+
+    Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'mobile' => '+639171234567',
+    ]);
+
+    $this->withToken($token)->postJson('/api/v1/customers', [
+        'branch_ulid' => $branch->ulid,
+        'name' => 'Duplicate Number',
+        'mobile' => '0917 123 4567',
+    ])->assertStatus(422)
+        ->assertJsonPath('error.code', 'VALIDATION_FAILED')
+        ->assertJsonPath('error.details.0.field', 'mobile');
+});
+
 it('requires a blacklist reason when marking a customer blacklisted', function () {
     $branch = Branch::factory()->create();
     [, $token] = userWithRole('cashier', $branch);
