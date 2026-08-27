@@ -30,7 +30,7 @@ class StockMovement extends Model
 
     public const TYPES = [
         'receipt', 'sale', 'return_in', 'return_out', 'ticket_consumption',
-        'adjustment', 'transfer_in', 'transfer_out', 'write_off',
+        'adjustment', 'transfer_in', 'transfer_out', 'write_off', 'refurb_consumption',
     ];
 
     protected function casts(): array

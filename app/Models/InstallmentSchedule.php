@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasUlid;
 use Database\Factories\InstallmentScheduleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class InstallmentSchedule extends Model
 {
     /** @use HasFactory<InstallmentScheduleFactory> */
-    use HasFactory;
+    use HasFactory, HasUlid;
 
     public const STATUSES = ['pending', 'paid', 'overdue', 'waived'];
 

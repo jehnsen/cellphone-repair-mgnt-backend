@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\Sale\StoreRefundRequest;
 use App\Http\Requests\Api\V1\Sale\StoreSalePaymentRequest;
 use App\Http\Requests\Api\V1\Sale\StoreSaleRequest;
 use App\Http\Requests\Api\V1\Sale\VoidSaleRequest;
 use App\Http\Resources\PaymentResource;
+use App\Http\Resources\RefundResource;
 use App\Http\Resources\SaleResource;
 use App\Models\Customer;
 use App\Models\Product;
@@ -14,6 +16,7 @@ use App\Models\Sale;
 use App\Models\SerializedUnit;
 use App\Models\Service;
 use App\Services\PaymentRecorder;
+use App\Services\RefundService;
 use App\Services\SaleService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -24,6 +27,7 @@ class SaleController extends Controller
     public function __construct(
         private readonly SaleService $sales,
         private readonly PaymentRecorder $payments,
+        private readonly RefundService $refunds,
     ) {}
 
     public function index(): AnonymousResourceCollection
@@ -86,5 +90,12 @@ class SaleController extends Controller
 
             return (new PaymentResource($payment->load('actor')))->response()->setStatusCode(201);
         });
+    }
+
+    public function refund(StoreRefundRequest $request, Sale $sale): JsonResponse
+    {
+        $refund = $this->refunds->create($sale, $request->validated(), $request->user());
+
+        return (new RefundResource($refund))->response()->setStatusCode(201);
     }
 }

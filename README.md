@@ -166,6 +166,21 @@ clears config cache and runs the suite. Notable coverage so far:
   balance unpaid still blocks release; paying it off then unblocks it)
   (`ShiftTest.php`, `SaleTest.php`, `TicketPaymentTest.php`,
   `DiscountCalculatorTest.php`).
+- Purchase orders/goods receipts/refunds/buy-back/installments/reporting:
+  submit-then-partially-then-fully receive a PO with the status sync at
+  each step, rejecting a receive on a draft PO and over-receiving a line,
+  ad-hoc goods receipts, a restocking refund (and confirming a `write_off`
+  one does *not* restock), refunding more than a line has left and an
+  out-of-range `line_index`, the `sales.refund` permission gate, an
+  acquisition blocked from completing while IMEI-flagged and rejected on a
+  second completion, a refurb job moving its unit to `for_repair` then
+  back with the recomputed `landed_cost` becoming the unit's new
+  `acquisition_cost`, an installment plan's even split (with the rounding
+  remainder landing on the last row), paying a schedule and rejecting a
+  second payment once it's already `paid`, and the `reports.view` /
+  `reports.margin.view` permission gates per report (`PurchaseOrderTest.php`,
+  `RefundTest.php`, `AcquisitionTest.php`, `RefurbJobTest.php`,
+  `InstallmentPlanTest.php`, `ReportTest.php`).
 
 ## Data layer
 
@@ -260,11 +275,13 @@ photos, and quotes; Stage 6 adds the inventory core — suppliers, serialized
 units, and the stock ledger; Stage 7 adds chain of custody — IMEI
 checkpoints, part swaps, and the one public (unauthenticated) endpoint in
 the whole API; Stage 8 adds POS — shifts, sales with VAT/discount
-computation, and payments (below). Every one of these routes, plus the
-Stage 2 auth/health routes, is listed by `php artisan route:list`.
-Purchase orders/goods receipts, refunds, and the rest of the domain follow
-the same pattern in later stages — see `docs/design/01-domain-design.md`
-§8 for the build order.
+computation, and payments; a final pass rounds out the rest of the domain:
+purchase orders/goods receipts, refunds, buy-back/refurb, installments,
+and reporting (all below). Every one of these routes, plus the Stage 2
+auth/health routes, is listed by `php artisan route:list`. What's *not*
+built: notifications/message templates, the unclaimed-notice 30/60/90 job,
+document reprints, and populating the reporting rollup tables on a
+schedule — see `docs/design/01-domain-design.md` §8 for the full build order.
 
 ## Repairs: tickets, state machine, timeline, photos, quotes (Stage 5)
 
@@ -511,10 +528,105 @@ insert. Fixed by adding it to the model's `Fillable` list. A reminder that
 factory-only coverage of a model can hide a broken `Fillable` array
 indefinitely.
 
-**Deliberately deferred to a later pass**: refunds (`GET|POST /refunds`
-doesn't exist yet — voiding a whole sale is the only reversal path right
-now), and the `ticket_balance` sellable type (superseded by the direct
-ticket-payment endpoint above).
+**Deliberately not implemented**: the `ticket_balance` sellable type
+(superseded by the direct ticket-payment endpoint above) — refunds
+themselves are built below.
+
+## Purchase orders, goods receipts, refunds, buy-back/refurb, installments, reporting
+
+The remaining bounded contexts from the design doc, in one pass:
+
+- **Purchase orders + goods receipts** (`GET|POST /purchase-orders`,
+  `PATCH /purchase-orders/{ulid}`, `POST .../receive`,
+  `GET|POST /goods-receipts`) — the *formal* restocking flow Stage 6
+  deferred. A PO moves `draft → submitted → cancelled`, or gets received
+  (once or partially, any number of times) into `partially_received` /
+  `received`, computed from every line's `received_qty` vs `ordered_qty`.
+  `GoodsReceiptService::post()` is the one place that actually posts the
+  stock movement — called both by an ad-hoc receipt (no PO) and by
+  `PurchaseOrderService::receive()`. Receiving lines are keyed by
+  `product_ulid`, not an internal `purchase_order_line` id — that table
+  has no ulid of its own, and Rule 6 rules out sending the internal id
+  back just to round-trip it (see `ReceivePurchaseOrderRequest`'s
+  docblock). Serialized units still register via the Stage 6
+  `POST /serialized-units` endpoint, not a receipt line.
+- **Refunds** (`POST /sales/{sale}/refunds`) — same "no ulid to reference
+  a line by" problem as above, solved the same way but by position instead
+  of product: a line is keyed by its index into `GET /sales/{sale}`'s
+  `data.lines` array. `restock_behavior=restock` reverses the sale's stock
+  effect (a `return_in` movement, or a serialized unit flipped back to
+  `in_stock`); `no_restock`/`write_off` both leave stock exactly as the
+  original sale left it — the only question restock_behavior answers is
+  whether the item can go back on the shelf, not whether it "un-happens".
+  The sale's status becomes `partially_refunded` or `refunded` once every
+  line is fully covered.
+- **Buy-back / refurb** (`GET|POST /acquisitions`,
+  `POST .../imei-check`, `POST .../complete`, `GET|POST /refurb-jobs`,
+  `POST .../lines`, `POST .../complete`) — `Acquisition` has no
+  `product_id` of its own; the shop only knows the seller/IMEI/offered
+  price at intake, and identifies the exact product/model at `complete()`
+  time (after physical inspection), which is when the real
+  `SerializedUnit` actually gets created (reusing `SerializedUnitService`
+  from Stage 6 — an acquisition completion *is* a receipt). The design
+  brief's own guard — never complete while `imei_check_result=flagged`
+  (`409 ACQUISITION_IMEI_FLAGGED`) — is enforced in the service, not a DB
+  `CHECK`, since it depends on another column's value at a point in time.
+  A refurb job takes that unit out of sellable circulation (`for_repair`)
+  while parts go into it — each line posts a stock movement (see the
+  `refurb_consumption` movement type below) and recomputes `landed_cost`
+  (parts + labor + the original acquisition price) — then back to
+  `in_stock` on completion, with the unit's `acquisition_cost` updated to
+  the final `landed_cost` as its new true cost basis.
+- **Installments** (`GET|POST /installment-plans`,
+  `POST .../schedules/{schedule}/pay`) — creating a plan splits
+  `sale.total − downpayment` evenly across `term_months` (the last
+  instalment absorbs the rounding remainder so the schedule always sums
+  back exactly). Paying a schedule also records a real `Payment` against
+  the *underlying sale* (`payable_type=sale`) through the same
+  `PaymentRecorder` sales and ticket payments use — one unified payments
+  ledger, not a parallel one for instalments. `installment_schedules`
+  needed a `ulid` added via migration: the design doc calls it "no ulid"
+  but then routes a specific schedule by `{scheduleId}` in its own
+  endpoint list — the one place in the whole design that would otherwise
+  put an internal `BIGINT` in a URL (Rule 6). Added the column instead of
+  accepting that contradiction.
+- **Reports** (`GET /reports/sales`, `/margin`, `/technician-throughput`,
+  `/most-repaired-models`, `/warranty-failure-rate`, `/inventory-valuation`,
+  `/dead-stock`, `/unclaimed-aging`, `/commissions-payable`) — all
+  read-only, JSON with `data.aggregate`/`data.rows` and
+  `meta.generated_at`. The design brief's own rule says these should read
+  from rollup tables (`daily_metrics` etc. — they exist, Stage 3), never
+  scan transactional tables per request; nothing populates those rollups
+  yet (that's a scheduled command, its own undertaking), so
+  `ReportService` computes live instead. Fine at this shop's data volume;
+  switching the read side later shouldn't change any method's signature.
+  `/margin` and `/inventory-valuation` require `reports.margin.view`
+  in addition to `reports.view` (403 for a cashier), same gate as
+  `ProductResource.cost`.
+
+**Two real bugs this pass surfaced:**
+
+- A JOIN across `ticket_events` and `repair_tickets` in the technician-
+  throughput report referenced a bare `created_at` — both tables have one,
+  and MariaDB rejected the query outright (`Column 'created_at' in where
+  clause is ambiguous`) rather than silently picking one. Fixed by
+  qualifying it as `ticket_events.created_at`. A reminder that an unqualified
+  column name is only safe until the next join touches a same-named column.
+- `acquisitions.seller_id_photo_ref` was `NOT NULL` in the schema with no
+  way to satisfy it — there's no photo-upload endpoint for acquisitions
+  (deliberately out of scope; it's a plain string reference for now, not a
+  Rule Zero ULID+signed-URL pair like `ticket_photos`), so every
+  `POST /acquisitions` failed outright. Fixed with a migration making the
+  column nullable.
+
+`stock_movements.movement_type` also gained a `refurb_consumption` value
+via migration — `ticket_consumption` is specifically a repair-ticket
+concept, and a refurb job isn't tied to a customer ticket, so reusing it
+would have mislabeled the ledger rather than just being imprecise.
+
+**Still not implemented** (see design doc §8): notifications/message
+templates, the unclaimed-notice 30/60/90-day workflow, document reprints,
+and a scheduled command to actually populate the reporting rollup tables.
 
 ### A real bug this surfaced: BranchScope and cross-branch lookups
 

@@ -20,9 +20,13 @@ users, catalog, customers/devices) → Stage 5 repair tickets/state
 machine/timeline/photos/quotes → Stage 6 inventory core (suppliers,
 serialized units, the stock ledger) → Stage 7 chain of custody (IMEI
 checkpoints, part swaps, public verification) → Stage 8 POS (shifts, sales,
-payments) → purchase orders/goods receipts, refunds, buy-back, reporting
-still pending. Check `routes/api.php` and `app/Http/Controllers/Api/V1/` to
-see what's actually implemented before assuming a later stage exists.
+payments) → purchase orders/goods receipts, refunds, buy-back/refurb,
+installments, and reporting. **Not built**: notifications/message
+templates, the unclaimed-notice 30/60/90-day job, document reprints, and a
+scheduled command to populate the reporting rollup tables (reports compute
+live instead — see ReportService's docblock). Check `routes/api.php` and
+`app/Http/Controllers/Api/V1/` to see what's actually implemented before
+assuming something exists.
 
 ## Commands
 
@@ -177,14 +181,18 @@ automatically (see `getRouteKeyName()` below).
 write `stock_movements` (append-only, source of truth) and update
 `stock_levels` (a cached, never-authoritative balance) — same
 lock-then-get-or-create-then-retry-on-race shape as `Sequence::next()`.
-Every stock-moving action calls this rather than touching either table
-directly; right now that's serialized-unit registration (`+1 receipt`),
-write-offs (`-1 write_off`), and stock adjustments (signed, per line) —
-purchase orders/goods receipts and real ticket-line/sale consumption still
-route through it once those stages exist. `reference_id` on a movement is
-an internal `BIGINT` and is deliberately not serialized (no `morphMap` yet
-to turn it back into the referenced row's ulid) — only `reference_type`
-(a plain string like `"stock_adjustment"`) ships.
+Every stock-moving action calls this: serialized-unit registration and
+acquisition completion (`+1 receipt`), write-offs (`-1 write_off`), stock
+adjustments (signed, per line), goods receipts and PO receiving
+(`+qty receipt`), sales/refunds/voids (`sale`/`return_in`), and refurb job
+lines (`refurb_consumption` — added via migration since `ticket_consumption`
+is specifically a repair-ticket concept and a refurb job isn't tied to a
+customer ticket; mislabeling it would have been worse than widening the
+enum). `reference_id` on a movement is an internal `BIGINT` and is
+deliberately not serialized (no `morphMap` yet to turn it back into the
+referenced row's ulid) — only `reference_type` (a plain string like
+`"stock_adjustment"`) ships. Real ticket-line part consumption is still
+the one stock-moving action *not* wired up (flagged since Stage 5).
 
 ### Chain of custody
 
@@ -222,6 +230,42 @@ has no column linking a line back to a specific ticket, so it's unused.
 `ShiftService::close()` reconciles *cash-only* payments (`Payment.shift_id`
 + `method=cash`) plus cash movements against the counted drawer — gcash/
 card never touch `expected_cash`.
+
+### Purchase orders, refunds, buy-back/refurb, installments
+
+Two more instances of "no ulid on this nested table, so how does the client
+reference one row": `ReceivePurchaseOrderRequest` keys purchase-order lines
+by `product_ulid` (a PO won't realistically repeat the same product across
+lines); `StoreRefundRequest` keys sale lines by their *position* in
+`GET /sales/{sale}`'s `data.lines` array (`line_index`), since a sale
+legitimately can repeat a product. Never send an internal id back to the
+client to solve this — pick whichever of these two patterns actually fits.
+
+`installment_schedules` needed a real `ulid` column added via migration —
+the design doc calls it "no ulid" but its own endpoint list then routes a
+specific schedule by `{scheduleId}`, which would otherwise be the one place
+in the whole API exposing an internal `BIGINT` in a URL.
+
+`Acquisition` has no `product_id` — the exact product/model is identified
+at `complete()` time (after physical inspection), which is when
+`SerializedUnitService::create()` (Stage 6) actually gets reused to make
+the real unit; a buy-back completion *is* a receipt. The brief's own guard
+— never complete while `imei_check_result=flagged`
+(`AcquisitionImeiFlagged`) — lives in the service, not a DB `CHECK`, since
+it depends on another column's value at a point in time, not the row
+itself. A `RefurbJob` moves that unit to `for_repair` while parts go in,
+then back to `in_stock` on completion with `acquisition_cost` updated to
+the job's final `landed_cost` (parts + labor + the original acquisition
+price) — the unit's new true cost basis.
+
+Paying an installment schedule also writes a real `Payment` against the
+*sale* (via the same `PaymentRecorder` sales and ticket payments use) —
+there's no parallel bookkeeping system for installments.
+
+`App\Services\ReportService` computes all 9 `/reports/*` endpoints live
+from transactional tables — the design brief wants rollup tables instead
+(`daily_metrics` etc., already migrated in Stage 3), but nothing populates
+them yet. Don't assume those rollup tables have data in them.
 
 ### Resource-serialization gotcha
 

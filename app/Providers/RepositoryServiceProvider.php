@@ -2,14 +2,20 @@
 
 namespace App\Providers;
 
+use App\Repositories\AcquisitionRepository;
 use App\Repositories\BranchRepository;
+use App\Repositories\Contracts\AcquisitionRepositoryInterface;
 use App\Repositories\Contracts\BranchRepositoryInterface;
 use App\Repositories\Contracts\CustomerDeviceRepositoryInterface;
 use App\Repositories\Contracts\CustomerRepositoryInterface;
 use App\Repositories\Contracts\DeviceBrandRepositoryInterface;
 use App\Repositories\Contracts\DeviceModelRepositoryInterface;
+use App\Repositories\Contracts\GoodsReceiptRepositoryInterface;
+use App\Repositories\Contracts\InstallmentPlanRepositoryInterface;
 use App\Repositories\Contracts\ProductCategoryRepositoryInterface;
 use App\Repositories\Contracts\ProductRepositoryInterface;
+use App\Repositories\Contracts\PurchaseOrderRepositoryInterface;
+use App\Repositories\Contracts\RefurbJobRepositoryInterface;
 use App\Repositories\Contracts\RepairTicketRepositoryInterface;
 use App\Repositories\Contracts\SaleRepositoryInterface;
 use App\Repositories\Contracts\SerializedUnitRepositoryInterface;
@@ -24,8 +30,12 @@ use App\Repositories\CustomerDeviceRepository;
 use App\Repositories\CustomerRepository;
 use App\Repositories\DeviceBrandRepository;
 use App\Repositories\DeviceModelRepository;
+use App\Repositories\GoodsReceiptRepository;
+use App\Repositories\InstallmentPlanRepository;
 use App\Repositories\ProductCategoryRepository;
 use App\Repositories\ProductRepository;
+use App\Repositories\PurchaseOrderRepository;
+use App\Repositories\RefurbJobRepository;
 use App\Repositories\RepairTicketRepository;
 use App\Repositories\SaleRepository;
 use App\Repositories\SerializedUnitRepository;
@@ -59,6 +69,11 @@ class RepositoryServiceProvider extends ServiceProvider
         StockMovementRepositoryInterface::class => StockMovementRepository::class,
         ShiftRepositoryInterface::class => ShiftRepository::class,
         SaleRepositoryInterface::class => SaleRepository::class,
+        PurchaseOrderRepositoryInterface::class => PurchaseOrderRepository::class,
+        GoodsReceiptRepositoryInterface::class => GoodsReceiptRepository::class,
+        AcquisitionRepositoryInterface::class => AcquisitionRepository::class,
+        RefurbJobRepositoryInterface::class => RefurbJobRepository::class,
+        InstallmentPlanRepositoryInterface::class => InstallmentPlanRepository::class,
     ];
 
     public function register(): void

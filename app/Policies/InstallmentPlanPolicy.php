@@ -4,7 +4,7 @@ namespace App\Policies;
 
 use App\Models\User;
 
-class SalePolicy
+class InstallmentPlanPolicy
 {
     public function viewAny(User $user): bool
     {
@@ -21,13 +21,8 @@ class SalePolicy
         return $user->can('sales.create');
     }
 
-    public function void(User $user): bool
+    public function pay(User $user): bool
     {
-        return $user->can('sales.void');
-    }
-
-    public function refund(User $user): bool
-    {
-        return $user->can('sales.refund');
+        return $user->can('sales.create');
     }
 }

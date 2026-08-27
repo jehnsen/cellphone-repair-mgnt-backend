@@ -145,6 +145,36 @@
             "key": "sale_ulid",
             "value": "",
             "type": "string"
+        },
+        {
+            "key": "purchase_order_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "goods_receipt_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "acquisition_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "refurb_job_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "installment_plan_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "installment_schedule_ulid",
+            "value": "",
+            "type": "string"
         }
     ],
     "item": [
@@ -2935,6 +2965,261 @@
             ]
         },
         {
+            "name": "Purchase Orders",
+            "item": [
+                {
+                    "name": "Create Purchase Order",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_ulid\": \"{{owner_branch_ulid}}\",\n    \"supplier_ulid\": \"{{supplier_ulid}}\",\n    \"expected_date\": \"2026-09-03\",\n    \"lines\": [\n        {\n            \"product_ulid\": \"{{product_ulid}}\",\n            \"ordered_qty\": 20,\n            \"unit_cost\": 50\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/purchase-orders",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "purchase-orders"
+                            ]
+                        },
+                        "description": "Starts in draft. Run Suppliers > Create Supplier and Catalog > Products > Create Product first."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "const value = json?.['data']?.['ulid'];",
+                                    "if (value) { pm.collectionVariables.set('purchase_order_ulid', value); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Purchase Orders",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/purchase-orders",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "purchase-orders"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Purchase Order",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/purchase-orders\/{{purchase_order_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "purchase-orders",
+                                "{{purchase_order_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Submit Purchase Order",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"submitted\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/purchase-orders\/{{purchase_order_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "purchase-orders",
+                                "{{purchase_order_ulid}}"
+                            ]
+                        },
+                        "description": "Only draft\u2192submitted, draft\/submitted\u2192cancelled are legal here \u2014 partially_received\/received are system-derived by receiving, not settable via PATCH."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Receive Purchase Order",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lines\": [\n        {\n            \"product_ulid\": \"{{product_ulid}}\",\n            \"quantity\": 12\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/purchase-orders\/{{purchase_order_ulid}}\/receive",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "purchase-orders",
+                                "{{purchase_order_ulid}}",
+                                "receive"
+                            ]
+                        },
+                        "description": "Posts a goods receipt for however much of each line arrived (can be partial \u2014 the PO's status becomes partially_received or received accordingly). Lines are keyed by product_ulid, not an internal line id (purchase_order_lines has no ulid)."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Goods Receipts",
+            "item": [
+                {
+                    "name": "Create Goods Receipt (Ad-hoc)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_ulid\": \"{{owner_branch_ulid}}\",\n    \"supplier_ulid\": \"{{supplier_ulid}}\",\n    \"lines\": [\n        {\n            \"product_ulid\": \"{{product_ulid}}\",\n            \"quantity\": 15,\n            \"unit_cost\": 40\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/goods-receipts",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "goods-receipts"
+                            ]
+                        },
+                        "description": "Receiving without a purchase order backing it \u2014 e.g. an unplanned drop-off restock."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "const value = json?.['data']?.['ulid'];",
+                                    "if (value) { pm.collectionVariables.set('goods_receipt_ulid', value); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Goods Receipts",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/goods-receipts",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "goods-receipts"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Goods Receipt",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/goods-receipts\/{{goods_receipt_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "goods-receipts",
+                                "{{goods_receipt_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
             "name": "Shifts",
             "item": [
                 {
@@ -3222,6 +3507,44 @@
                     "response": []
                 },
                 {
+                    "name": "Refund Sale",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"reason_code\": \"customer_changed_mind\",\n    \"lines\": [\n        {\n            \"line_index\": 0,\n            \"quantity\": 1,\n            \"restock_behavior\": \"restock\"\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/sales\/{{sale_ulid}}\/refunds",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sales",
+                                "{{sale_ulid}}",
+                                "refunds"
+                            ]
+                        },
+                        "description": "line_index refers to the line's position in Show Sale's data.lines array (sale_lines has no ulid of its own). restock puts it back on the shelf (or flips a serialized unit back to in_stock); no_restock\/write_off both leave stock exactly as the original sale left it."
+                    },
+                    "response": []
+                },
+                {
                     "name": "Void Sale",
                     "request": {
                         "method": "POST",
@@ -3255,7 +3578,7 @@
                                 "void"
                             ]
                         },
-                        "description": "Reverses stock consumption (a serialized unit goes back to in_stock) \u2014 a full refund flow with per-line restocking choices is a separate, not-yet-built action."
+                        "description": "Reverses stock consumption (a serialized unit goes back to in_stock). Only a still-completed sale can be voided \u2014 running this right after Refund Sale above (on the same sale) correctly 409s, since that sale is now refunded, not completed; try it against a fresh Create Sale run instead to see it succeed."
                     },
                     "response": []
                 },
@@ -3328,6 +3651,655 @@
                             ]
                         },
                         "description": "A stateless preview \u2014 no sale is created. Try type=percent&value=10 for a plain promo discount instead. senior_citizen\/pwd default their value to the legally-fixed 20% when omitted."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Buy-back (Acquisitions)",
+            "item": [
+                {
+                    "name": "Create Acquisition",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_ulid\": \"{{owner_branch_ulid}}\",\n    \"seller_name\": \"Juan Dela Cruz\",\n    \"seller_id_type\": \"Driver's License\",\n    \"seller_id_number\": \"N01-23-456789\",\n    \"declared_source\": \"Personal use, upgrading to a new phone.\",\n    \"offered_price\": 5000,\n    \"imei\": \"{{imei}}\",\n    \"condition_assessment\": \"Good condition, minor scratches on the back.\",\n    \"purchase_date\": \"2026-08-27\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/acquisitions",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "acquisitions"
+                            ]
+                        },
+                        "description": "Buy-back intake. imei_check_result starts not_checked \u2014 run IMEI Check Acquisition next."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "const value = json?.['data']?.['ulid'];",
+                                    "if (value) { pm.collectionVariables.set('acquisition_ulid', value); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Acquisitions",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/acquisitions",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "acquisitions"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Acquisition",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/acquisitions\/{{acquisition_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "acquisitions",
+                                "{{acquisition_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "IMEI Check Acquisition",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"result\": \"clear\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/acquisitions\/{{acquisition_ulid}}\/imei-check",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "acquisitions",
+                                "{{acquisition_ulid}}",
+                                "imei-check"
+                            ]
+                        },
+                        "description": "A flagged result blocks Complete Acquisition (409 ACQUISITION_IMEI_FLAGGED) until re-checked clear."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Complete Acquisition",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"product_ulid\": \"{{product_ulid}}\",\n    \"condition\": \"secondhand\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/acquisitions\/{{acquisition_ulid}}\/complete",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "acquisitions",
+                                "{{acquisition_ulid}}",
+                                "complete"
+                            ]
+                        },
+                        "description": "Turns the acquisition into a real serialized unit (product_ulid should be a handset-type product) \u2014 that's when the shop finally identifies the exact model, after inspection. Idempotency: calling this twice on the same acquisition is a 409, not a second unit."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Refurb Jobs",
+            "item": [
+                {
+                    "name": "Create Refurb Job",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"acquisition_ulid\": \"{{acquisition_ulid}}\",\n    \"labor_cost\": 500\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/refurb-jobs",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "refurb-jobs"
+                            ]
+                        },
+                        "description": "Requires the acquisition already completed (Complete Acquisition above). Moves the resulting serialized unit to for_repair for the duration of the job."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "const value = json?.['data']?.['ulid'];",
+                                    "if (value) { pm.collectionVariables.set('refurb_job_ulid', value); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Refurb Jobs",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/refurb-jobs",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "refurb-jobs"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Refurb Job",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/refurb-jobs\/{{refurb_job_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "refurb-jobs",
+                                "{{refurb_job_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Add Refurb Job Line",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"product_ulid\": \"{{product_ulid}}\",\n    \"quantity\": 1,\n    \"unit_cost\": 800\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/refurb-jobs\/{{refurb_job_ulid}}\/lines",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "refurb-jobs",
+                                "{{refurb_job_ulid}}",
+                                "lines"
+                            ]
+                        },
+                        "description": "A part consumed by the job \u2014 posts a refurb_consumption stock movement and recomputes the job's parts_cost\/landed_cost."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Complete Refurb Job",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/refurb-jobs\/{{refurb_job_ulid}}\/complete",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "refurb-jobs",
+                                "{{refurb_job_ulid}}",
+                                "complete"
+                            ]
+                        },
+                        "description": "Moves the serialized unit back to in_stock and updates its acquisition_cost to the job's final landed_cost \u2014 the true cost basis for margin reporting going forward."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Installments",
+            "item": [
+                {
+                    "name": "Create Installment Plan",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"sale_ulid\": \"{{sale_ulid}}\",\n    \"downpayment\": 200,\n    \"term_months\": 3\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/installment-plans",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "installment-plans"
+                            ]
+                        },
+                        "description": "Splits (sale total \u2212 downpayment) evenly across term_months, one schedule row per month; the last row absorbs any rounding remainder. Run Sales > Create Sale (Product) first."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data?.ulid) { pm.collectionVariables.set('installment_plan_ulid', json.data.ulid); }",
+                                    "if (json.data?.schedules?.[0]?.ulid) { pm.collectionVariables.set('installment_schedule_ulid', json.data.schedules[0].ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Installment Plans",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/installment-plans",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "installment-plans"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Installment Plan",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/installment-plans\/{{installment_plan_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "installment-plans",
+                                "{{installment_plan_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Pay Installment Schedule",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"method\": \"cash\",\n    \"tendered\": 1000,\n    \"amount\": 1000\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/installment-plans\/{{installment_plan_ulid}}\/schedules\/{{installment_schedule_ulid}}\/pay",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "installment-plans",
+                                "{{installment_plan_ulid}}",
+                                "schedules",
+                                "{{installment_schedule_ulid}}",
+                                "pay"
+                            ]
+                        },
+                        "description": "Also records a real Payment against the underlying sale (payable_type=sale) \u2014 one unified payments ledger, not a parallel one for installments. Adjust amount to match Show Installment Plan's data.schedules[0].amount_due."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Reports",
+            "item": [
+                {
+                    "name": "Sales Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/sales?date_from=2026-01-01&date_to=2026-12-31",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "sales"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "2026-01-01",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "2026-12-31",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Margin Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/margin?date_from=2026-01-01&date_to=2026-12-31",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "margin"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "2026-01-01",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "2026-12-31",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Requires reports.margin.view (owner\/manager only) \u2014 403 for a cashier."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Technician Throughput Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/technician-throughput",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "technician-throughput"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Most Repaired Models Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/most-repaired-models",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "most-repaired-models"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Warranty Failure Rate Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/warranty-failure-rate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "warranty-failure-rate"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Inventory Valuation Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/inventory-valuation",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "inventory-valuation"
+                            ]
+                        },
+                        "description": "Requires reports.margin.view too, same as the margin report."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Dead Stock Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/dead-stock?days=60",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "dead-stock"
+                            ],
+                            "query": [
+                                {
+                                    "key": "days",
+                                    "value": "60",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Unclaimed Aging Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/unclaimed-aging",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "unclaimed-aging"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Commissions Payable Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/commissions-payable",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "commissions-payable"
+                            ]
+                        }
                     },
                     "response": []
                 }

@@ -1,0 +1,20 @@
+<?php
+
+namespace App\Http\Resources;
+
+use Illuminate\Http\Request;
+use Illuminate\Http\Resources\Json\JsonResource;
+
+/** @mixin \App\Models\PurchaseOrderLine */
+class PurchaseOrderLineResource extends JsonResource
+{
+    public function toArray(Request $request): array
+    {
+        return [
+            'product' => new ProductResource($this->whenLoaded('product')),
+            'ordered_qty' => $this->ordered_qty,
+            'received_qty' => $this->received_qty,
+            'unit_cost' => $this->when($request->user()?->can('reports.margin.view'), $this->unit_cost),
+        ];
+    }
+}

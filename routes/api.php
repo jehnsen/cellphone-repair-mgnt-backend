@@ -8,14 +8,20 @@ use App\Http\Controllers\Api\V1\Catalog\ProductCategoryController;
 use App\Http\Controllers\Api\V1\Catalog\ProductController;
 use App\Http\Controllers\Api\V1\Catalog\ServiceController;
 use App\Http\Controllers\Api\V1\CustomerController;
+use App\Http\Controllers\Api\V1\AcquisitionController;
 use App\Http\Controllers\Api\V1\CustomerDeviceController;
 use App\Http\Controllers\Api\V1\DiscountController;
+use App\Http\Controllers\Api\V1\GoodsReceiptController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ImeiVerificationController;
+use App\Http\Controllers\Api\V1\InstallmentPlanController;
 use App\Http\Controllers\Api\V1\InventoryController;
 use App\Http\Controllers\Api\V1\PartSwapController;
 use App\Http\Controllers\Api\V1\PublicVerificationController;
+use App\Http\Controllers\Api\V1\PurchaseOrderController;
+use App\Http\Controllers\Api\V1\RefurbJobController;
 use App\Http\Controllers\Api\V1\RepairTicketController;
+use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\SerializedUnitController;
 use App\Http\Controllers\Api\V1\ShiftController;
@@ -101,9 +107,9 @@ Route::prefix('v1')->group(function (): void {
 
         // Inventory — Stage 6: suppliers, serialized units, the stock
         // ledger (stock_movements is the source of truth; stock_levels is
-        // a derived cache — see StockMovementRecorder). Purchase orders and
-        // goods receipts are deferred to a later pass; stock_adjustments is
-        // the write path exercised for now.
+        // a derived cache — see StockMovementRecorder). stock_adjustments
+        // remains a write path alongside the purchase-order/goods-receipt
+        // flow below.
         Route::apiResource('suppliers', SupplierController::class);
         Route::apiResource('serialized-units', SerializedUnitController::class)
             ->except(['destroy']);
@@ -115,9 +121,19 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/stock-adjustments', [StockAdjustmentController::class, 'store']);
         Route::get('/stock-adjustments/{stockAdjustment}', [StockAdjustmentController::class, 'show']);
 
+        // Purchase orders + goods receipts — the formal restocking flow
+        // (see GoodsReceiptService's docblock; serialized units still
+        // register via POST /serialized-units, not a receipt line).
+        Route::apiResource('purchase-orders', PurchaseOrderController::class)
+            ->except(['destroy']);
+        Route::post('/purchase-orders/{purchaseOrder}/receive', [PurchaseOrderController::class, 'receive']);
+
+        Route::get('/goods-receipts', [GoodsReceiptController::class, 'index']);
+        Route::post('/goods-receipts', [GoodsReceiptController::class, 'store']);
+        Route::get('/goods-receipts/{goodsReceipt}', [GoodsReceiptController::class, 'show']);
+
         // POS — Stage 8: shifts, sales (VAT + discounts, see SaleCalculator),
-        // payments. Refunds and the ticket_balance sellable_type are
-        // deliberately deferred — see README.
+        // payments, refunds.
         Route::get('/shifts', [ShiftController::class, 'index']);
         Route::post('/shifts/open', [ShiftController::class, 'open']);
         Route::get('/shifts/{shift}', [ShiftController::class, 'show']);
@@ -129,8 +145,40 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/sales/{sale}', [SaleController::class, 'show']);
         Route::post('/sales/{sale}/void', [SaleController::class, 'void']);
         Route::post('/sales/{sale}/payments', [SaleController::class, 'addPayment']);
+        Route::post('/sales/{sale}/refunds', [SaleController::class, 'refund']);
 
         Route::get('/discounts/calculate', [DiscountController::class, 'calculate']);
+
+        // Buy-back / refurb
+        Route::apiResource('acquisitions', AcquisitionController::class)
+            ->except(['destroy']);
+        Route::post('/acquisitions/{acquisition}/imei-check', [AcquisitionController::class, 'imeiCheck']);
+        Route::post('/acquisitions/{acquisition}/complete', [AcquisitionController::class, 'complete']);
+
+        Route::get('/refurb-jobs', [RefurbJobController::class, 'index']);
+        Route::post('/refurb-jobs', [RefurbJobController::class, 'store']);
+        Route::get('/refurb-jobs/{refurbJob}', [RefurbJobController::class, 'show']);
+        Route::post('/refurb-jobs/{refurbJob}/lines', [RefurbJobController::class, 'addLine']);
+        Route::post('/refurb-jobs/{refurbJob}/complete', [RefurbJobController::class, 'complete']);
+
+        // Installments
+        Route::get('/installment-plans', [InstallmentPlanController::class, 'index']);
+        Route::post('/installment-plans', [InstallmentPlanController::class, 'store']);
+        Route::get('/installment-plans/{installmentPlan}', [InstallmentPlanController::class, 'show']);
+        Route::post('/installment-plans/{installmentPlan}/schedules/{schedule}/pay', [InstallmentPlanController::class, 'pay']);
+
+        // Reports — all read-only; see ReportService's docblock for why
+        // these compute live instead of reading the (still-unpopulated)
+        // rollup tables.
+        Route::get('/reports/sales', [ReportController::class, 'sales']);
+        Route::get('/reports/margin', [ReportController::class, 'margin']);
+        Route::get('/reports/technician-throughput', [ReportController::class, 'technicianThroughput']);
+        Route::get('/reports/most-repaired-models', [ReportController::class, 'mostRepairedModels']);
+        Route::get('/reports/warranty-failure-rate', [ReportController::class, 'warrantyFailureRate']);
+        Route::get('/reports/inventory-valuation', [ReportController::class, 'inventoryValuation']);
+        Route::get('/reports/dead-stock', [ReportController::class, 'deadStock']);
+        Route::get('/reports/unclaimed-aging', [ReportController::class, 'unclaimedAging']);
+        Route::get('/reports/commissions-payable', [ReportController::class, 'commissionsPayable']);
     });
 
     // Exists only so the exception-handling test suite can assert the 500
