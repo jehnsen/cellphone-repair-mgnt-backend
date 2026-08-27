@@ -16,7 +16,7 @@ use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
 #[Fillable([
-    'branch_id', 'customer_id', 'cashier_id', 'shift_id', 'subtotal', 'discount_total',
+    'branch_id', 'sale_number', 'customer_id', 'cashier_id', 'shift_id', 'subtotal', 'discount_total',
     'vat_amount', 'vatable_sales', 'vat_exempt_sales', 'zero_rated_sales', 'total',
     'status', 'void_reason', 'source', 'client_uuid',
 ])]

@@ -115,6 +115,36 @@
             "key": "quote_ulid",
             "value": "",
             "type": "string"
+        },
+        {
+            "key": "supplier_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "serialized_unit_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "stock_adjustment_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "verification_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "shift_ulid",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "sale_ulid",
+            "value": "",
+            "type": "string"
         }
     ],
     "item": [
@@ -1774,7 +1804,8 @@
                                 "exec": [
                                     "pm.test('created', () => pm.response.to.have.status(201));",
                                     "const json = pm.response.json();",
-                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('ticket_ulid', json.data.ulid); }"
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('ticket_ulid', json.data.ulid); }",
+                                    "if (json.data && json.data.verification_token) { pm.collectionVariables.set('verification_token', json.data.verification_token); }"
                                 ]
                             }
                         }
@@ -2163,6 +2194,1142 @@
                         "description": "An 'approved' decision locks approved_amount onto the ticket, recalculates its balance, and auto-advances it to 'in_repair'; 'declined' auto-advances it to 'returned_as_is' instead \u2014 both only when that transition is still legal from the ticket's current status."
                     },
                     "response": []
+                },
+                {
+                    "name": "Record Ticket Payment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"method\": \"cash\",\n    \"tendered\": 500,\n    \"amount\": 500\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/payments",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "payments"
+                            ]
+                        },
+                        "description": "Pays down the ticket's balance directly \u2014 a repair ticket is never wrapped in a Sale to collect payment (see TicketPaymentController's docblock). 500 is a safely partial amount regardless of how much of the quote flow above ran; check the response's data.ticket.balance for what's actually left, and call this again with that amount to fully settle it (required before Transition Ticket Status can move a ticket to 'released')."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Ticket Payments",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/payments",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "payments"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Chain of Custody",
+            "item": [
+                {
+                    "name": "Record IMEI Verification",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phase\": \"intake\",\n    \"scanned_imei\": \"{{imei}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/imei-verifications",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "imei-verifications"
+                            ]
+                        },
+                        "description": "Records the scan whether or not it matches \u2014 matches_expected in the response reflects the comparison against the ticket's own customer_device.imei_normalized. A mismatch here doesn't fail the request; it's the release-time guard (see Transition Ticket Status \u2192 released) that actually blocks on it."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List IMEI Verifications",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/imei-verifications",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "imei-verifications"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Override IMEI Verification",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"phase\": \"release\",\n    \"scanned_imei\": \"{{imei}}\",\n    \"override_reason\": \"Box mixed up during intake; customer confirmed device by other identifying marks.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/imei-verifications\/override",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "imei-verifications",
+                                "override"
+                            ]
+                        },
+                        "description": "Owner\/manager only (tickets.imei_override) \u2014 a self-contained, logged escape hatch for a mismatched or unreadable IMEI at release. Lets the ready_for_pickup \u2192 released transition proceed despite a mismatch."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Record Part Swap",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"removed_description\": \"Cracked OEM screen assembly\",\n    \"installed_product_ulid\": \"{{product_ulid}}\",\n    \"disposition\": \"retained_for_disposal\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/part-swaps",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "part-swaps"
+                            ]
+                        },
+                        "description": "A documentation-only chain-of-custody record of what physically came out and went in \u2014 not the billing line for it (see Repair Tickets > Add Ticket Line for that). installed_product_ulid should be a 'part'-type product."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Part Swaps",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/tickets\/{{ticket_ulid}}\/part-swaps",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tickets",
+                                "{{ticket_ulid}}",
+                                "part-swaps"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Public Verification",
+            "item": [
+                {
+                    "name": "Verify Ticket (Public)",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/public\/verify\/{{verification_token}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "public",
+                                "verify",
+                                "{{verification_token}}"
+                            ]
+                        },
+                        "description": "The one unauthenticated endpoint in the API \u2014 proof a device genuinely passed through this shop's chain of custody. verification_token comes from Repair Tickets > Show Repair Ticket's data.verification_token (staff-only field, exposed so it can be embedded in a printed QR code). Deliberately redacted: no customer name, no claim_code, no pricing. Rate-limited to 10\/min\/IP regardless of auth."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Suppliers",
+            "item": [
+                {
+                    "name": "Create Supplier",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Global Parts Trading\",\n    \"contact_name\": \"Ana Reyes\",\n    \"contact_phone\": \"0917 111 2222\",\n    \"contact_email\": \"ana@globalparts.test\",\n    \"terms\": \"Net 30\",\n    \"notes\": \"Primary handset supplier.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/suppliers",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "suppliers"
+                            ]
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('supplier_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Suppliers",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/suppliers?filter[name]=&filter[is_active]=&sort=name",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "suppliers"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[name]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[is_active]",
+                                    "value": "true",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "name",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Supplier",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/suppliers\/{{supplier_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "suppliers",
+                                "{{supplier_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Supplier",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"terms\": \"Net 45\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/suppliers\/{{supplier_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "suppliers",
+                                "{{supplier_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Serialized Units",
+            "item": [
+                {
+                    "name": "Register Serialized Unit",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"product_ulid\": \"{{product_ulid}}\",\n    \"branch_ulid\": \"{{owner_branch_ulid}}\",\n    \"imei\": \"{{imei}}\",\n    \"condition\": \"brand_new\",\n    \"acquisition_cost\": 8000,\n    \"acquisition_source\": \"supplier\",\n    \"warranty_terms\": \"7 days replacement, 30 days repair warranty.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/serialized-units",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "serialized-units"
+                            ]
+                        },
+                        "description": "product_ulid must reference a handset-type product (Catalog > Products > Create Product, with type=handset). Registering a unit also posts a +1 receipt movement \u2014 see Inventory > Get Stock Movements."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('serialized_unit_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Serialized Units",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/serialized-units?filter[status]=&filter[product_id]=&sort=-created_at",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "serialized-units"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[status]",
+                                    "value": "in_stock",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[product_id]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-created_at",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Serialized Unit",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/serialized-units\/{{serialized_unit_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "serialized-units",
+                                "{{serialized_unit_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Serialized Unit",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"grade\": \"A\",\n    \"warranty_terms\": \"30 days repair warranty.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/serialized-units\/{{serialized_unit_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "serialized-units",
+                                "{{serialized_unit_ulid}}"
+                            ]
+                        },
+                        "description": "A status change is validated as a compare-and-swap and audited as a stock movement when it's 'written_off'. 'sold' is rejected here on purpose \u2014 that belongs to the (not yet built) sales flow."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Write Off Serialized Unit",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"status\": \"written_off\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/serialized-units\/{{serialized_unit_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "serialized-units",
+                                "{{serialized_unit_ulid}}"
+                            ]
+                        },
+                        "description": "Posts a -1 stock movement (movement_type=write_off) so stock_levels stays in sync with the true in-stock count."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Stock Adjustments",
+            "item": [
+                {
+                    "name": "Create Stock Adjustment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_ulid\": \"{{owner_branch_ulid}}\",\n    \"reason_code\": \"count_variance\",\n    \"note\": \"Physical count found extra stock during audit.\",\n    \"lines\": [\n        {\n            \"product_ulid\": \"{{product_ulid}}\",\n            \"quantity_delta\": 10,\n            \"unit_cost\": 50\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/stock-adjustments",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "stock-adjustments"
+                            ]
+                        },
+                        "description": "The write path exercised for now while purchase orders\/goods receipts are still pending (see routes\/api.php). A line referencing a serialized_unit_ulid must adjust by exactly \u00b11."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('stock_adjustment_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Stock Adjustments",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/stock-adjustments?filter[reason_code]=&sort=-created_at",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "stock-adjustments"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[reason_code]",
+                                    "value": "damage",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-created_at",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Stock Adjustment",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/stock-adjustments\/{{stock_adjustment_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "stock-adjustments",
+                                "{{stock_adjustment_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Inventory",
+            "item": [
+                {
+                    "name": "Get Stock Levels",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/inventory\/levels?filter[product_id]=&sort=-on_hand_qty",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "inventory",
+                                "levels"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[product_id]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-on_hand_qty",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "A derived, never-authoritative cache \u2014 see stock_movements for the source of truth."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Stock Movements",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/inventory\/movements?filter[product_id]=&filter[movement_type]=&filter[reference_type]=",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "inventory",
+                                "movements"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[product_id]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[movement_type]",
+                                    "value": "adjustment",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[reference_type]",
+                                    "value": "stock_adjustment",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Cursor-paginated append-only ledger \u2014 the source of truth stock_levels is derived from. Use meta.next_cursor as ?cursor=... to page further back."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Shifts",
+            "item": [
+                {
+                    "name": "Open Shift",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"opening_float\": 2000\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/shifts\/open",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "shifts",
+                                "open"
+                            ]
+                        },
+                        "description": "Opens a shift for the authenticated cashier (their own branch, inferred \u2014 not a request field). 422 VALIDATION_FAILED if they already have one open."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('shift_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "Show Shift",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/shifts\/{{shift_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "shifts",
+                                "{{shift_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Add Cash Movement",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"direction\": \"out\",\n    \"amount\": 300,\n    \"reason\": \"Bank deposit\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/shifts\/{{shift_ulid}}\/cash-movements",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "shifts",
+                                "{{shift_ulid}}",
+                                "cash-movements"
+                            ]
+                        },
+                        "description": "Cash in\/out that never touches a sale \u2014 petty cash, change fund top-ups, bank deposits. Folds into expected_cash on close."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Shifts",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/shifts?filter[is_open]=&sort=-opened_at",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "shifts"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[is_open]",
+                                    "value": "true",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-opened_at",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Sales",
+            "item": [
+                {
+                    "name": "Create Sale (Product)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"lines\": [\n        {\n            \"sellable_type\": \"product\",\n            \"product_ulid\": \"{{product_ulid}}\",\n            \"quantity\": 1\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/sales",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sales"
+                            ]
+                        },
+                        "description": "Requires an open shift (Shifts > Open Shift first) for the authenticated cashier. Computes VAT (see SaleCalculator) and consumes stock for track_inventory products \u2014 Catalog > Products > Create Product defaults to non-serialized with track_inventory=true, so register stock first (Inventory > ... or a Stock Adjustment) or expect 422 INSUFFICIENT_STOCK."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('sale_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
+                    "name": "List Sales",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/sales?filter[status]=&filter[created_from]=&filter[created_to]=&sort=-created_at",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sales"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[status]",
+                                    "value": "completed",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[created_from]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[created_to]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-created_at",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Sale",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/sales\/{{sale_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sales",
+                                "{{sale_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Add Sale Payment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"method\": \"cash\",\n    \"tendered\": 200,\n    \"amount\": 112\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/sales\/{{sale_ulid}}\/payments",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sales",
+                                "{{sale_ulid}}",
+                                "payments"
+                            ]
+                        },
+                        "description": "Call more than once to split a payment across methods (e.g. part cash, part gcash) \u2014 409 PAYMENT_SUM_MISMATCH once the sum would exceed the total. tendered\/change_given only apply to cash."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Void Sale",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"void_reason\": \"Customer changed their mind before leaving the store.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/sales\/{{sale_ulid}}\/void",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sales",
+                                "{{sale_ulid}}",
+                                "void"
+                            ]
+                        },
+                        "description": "Reverses stock consumption (a serialized unit goes back to in_stock) \u2014 a full refund flow with per-line restocking choices is a separate, not-yet-built action."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Close Shift",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"counted_cash\": 2000,\n    \"notes\": \"Drawer counted twice, matches expected.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/shifts\/{{shift_ulid}}\/close",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "shifts",
+                                "{{shift_ulid}}",
+                                "close"
+                            ]
+                        },
+                        "description": "Run this last \u2014 closing leaves the shift unusable for new sales\/cash movements (409 SHIFT_NOT_OPEN afterward). expected_cash only counts cash payments and cash movements; run Sales > Add Sale Payment (cash) first to see a non-zero reconciliation."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Discount Calculator",
+            "item": [
+                {
+                    "name": "Calculate Discount",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/discounts\/calculate?amount=1120&type=senior_citizen",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "discounts",
+                                "calculate"
+                            ],
+                            "query": [
+                                {
+                                    "key": "amount",
+                                    "value": "1120"
+                                },
+                                {
+                                    "key": "type",
+                                    "value": "senior_citizen"
+                                }
+                            ]
+                        },
+                        "description": "A stateless preview \u2014 no sale is created. Try type=percent&value=10 for a plain promo discount instead. senior_citizen\/pwd default their value to the legally-fixed 20% when omitted."
+                    },
+                    "response": []
                 }
             ]
         },
@@ -2329,6 +3496,29 @@
                             "path": [
                                 "device-brands",
                                 "{{device_brand_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Supplier",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/suppliers\/{{supplier_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "suppliers",
+                                "{{supplier_ulid}}"
                             ]
                         }
                     },

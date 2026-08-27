@@ -11,12 +11,16 @@ use App\Support\Api\ErrorCode;
  * the concrete design decision. Terminal states: released, returned_as_is.
  * unclaimed is semi-terminal — it only exits via released.
  *
- * Guards not yet enforced here (later-stage dependencies): the
- * ready_for_pickup → released edge should additionally require a matching
- * IMEI verification (Stage 6 / chain of custody) and a settled balance
- * (Stage 8 / POS payments). Both are still open per docs/design §7 Flag 9
- * for what happens after an unclaimed unit ages out — no "forfeited" state
- * exists yet.
+ * The transition graph itself doesn't encode either of the following — both
+ * live as guards in RepairTicketService::transition() instead, since they
+ * depend on state outside the status column:
+ *   - ready_for_pickup/unclaimed → released requires a matching IMEI
+ *     verification at the release phase, or an owner override — enforced
+ *     (see assertImeiClearedForRelease()).
+ *   - ...released should also require a settled balance (Stage 8 / POS
+ *     payments) — still open.
+ * Also still open per docs/design §7 Flag 9: what happens after an
+ * unclaimed unit ages out — no "forfeited" state exists yet.
  */
 class TicketStateMachine
 {

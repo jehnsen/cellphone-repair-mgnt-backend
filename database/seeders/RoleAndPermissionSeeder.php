@@ -17,6 +17,7 @@ class RoleAndPermissionSeeder extends Seeder
         'tickets.view', 'tickets.create', 'tickets.update', 'tickets.release',
         'tickets.imei_override',
         'inventory.view', 'inventory.adjust', 'inventory.receive',
+        'suppliers.manage',
         'sales.create', 'sales.void', 'sales.refund', 'sales.discount.override',
         'shifts.open', 'shifts.close',
         'customers.view', 'customers.manage',
@@ -33,6 +34,7 @@ class RoleAndPermissionSeeder extends Seeder
         'manager' => [
             'tickets.view', 'tickets.create', 'tickets.update', 'tickets.release', 'tickets.imei_override',
             'inventory.view', 'inventory.adjust', 'inventory.receive',
+            'suppliers.manage',
             'sales.create', 'sales.void', 'sales.refund', 'sales.discount.override',
             'shifts.open', 'shifts.close',
             'customers.view', 'customers.manage',

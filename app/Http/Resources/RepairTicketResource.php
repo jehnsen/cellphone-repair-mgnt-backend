@@ -47,6 +47,13 @@ class RepairTicketResource extends JsonResource
             'customer' => new CustomerResource($this->whenLoaded('customer')),
             'customer_device' => new CustomerDeviceResource($this->whenLoaded('customerDevice')),
             'assigned_technician' => new UserResource($this->whenLoaded('assignedTechnician')),
+            // Backs GET /public/verify/{token} (chain-of-custody proof) —
+            // staff embed this in the printed claim stub/warranty slip as a
+            // QR code. Not a secret the way claim_code is, but still staff-only.
+            'verification_token' => $this->when(
+                $request->user()?->can('tickets.view') && $this->relationLoaded('verificationToken'),
+                fn () => $this->verificationToken?->token,
+            ),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];

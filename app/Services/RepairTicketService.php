@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Branch;
 use App\Models\CustomerDevice;
+use App\Models\Payment;
 use App\Models\RepairTicket;
 use App\Models\Sequence;
 use App\Models\TicketLine;
@@ -45,6 +46,7 @@ class RepairTicketService
             'customer' => fn ($query) => $query->withoutGlobalScopes(),
             'customerDevice.deviceModel',
             'assignedTechnician' => fn ($query) => $query->withoutGlobalScopes(),
+            'verificationToken',
         ]);
     }
 
@@ -108,6 +110,11 @@ class RepairTicketService
 
             TicketStateMachine::assertCanTransition($locked->status, $toStatus);
 
+            if ($toStatus === 'released') {
+                $this->assertImeiClearedForRelease($locked);
+                $this->assertBalanceSettledForRelease($locked);
+            }
+
             $from = $locked->status;
             $locked->update(['status' => $toStatus]);
 
@@ -115,6 +122,44 @@ class RepairTicketService
 
             return $locked->fresh();
         });
+    }
+
+    /**
+     * The IMEI half of the release guard flagged in TicketStateMachine's
+     * docblock (chain of custody, docs/design/01-domain-design.md §2.5) —
+     * a settled balance (Stage 8 / POS) is still the other, open half.
+     */
+    private function assertImeiClearedForRelease(RepairTicket $ticket): void
+    {
+        $cleared = $ticket->imeiVerifications()
+            ->where('phase', 'release')
+            ->where(function ($query) {
+                $query->where('matches_expected', true)->orWhereNotNull('overridden_by');
+            })
+            ->exists();
+
+        if (! $cleared) {
+            throw new ApiException(
+                ErrorCode::ImeiMismatch,
+                'Releasing this ticket requires a matching IMEI verification at the release phase (or an owner override).',
+            );
+        }
+    }
+
+    /**
+     * The other half of the release guard (Stage 8 / POS payments) —
+     * closes the gap TicketStateMachine's docblock has flagged open since
+     * Stage 5. `balance` is kept current by recalculateBalance() on every
+     * payment and every edit that touches the amounts it derives from.
+     */
+    private function assertBalanceSettledForRelease(RepairTicket $ticket): void
+    {
+        if ((float) $ticket->balance > 0.01) {
+            throw new ApiException(
+                ErrorCode::PaymentSumMismatch,
+                "Releasing this ticket requires a settled balance — {$ticket->balance} is still due.",
+            );
+        }
     }
 
     public function addLine(RepairTicket $ticket, array $data, User $actor): TicketLine
@@ -157,10 +202,17 @@ class RepairTicketService
         return $ticket->events()->with('actor')->orderByDesc('created_at')->cursorPaginate(20);
     }
 
+    /**
+     * balance = base cost − the intake-time downpayment − every payment
+     * recorded since (App\Http\Controllers\Api\V1\TicketPaymentController).
+     * `downpayment` stays a separate column rather than becoming a Payment
+     * row retroactively — it predates POS/shifts existing at ticket intake.
+     */
     public function recalculateBalance(RepairTicket $ticket): RepairTicket
     {
         $base = (float) ($ticket->approved_amount ?? $ticket->estimated_cost ?? 0);
-        $ticket->update(['balance' => round($base - (float) $ticket->downpayment, 2)]);
+        $paid = (float) Payment::where('payable_type', 'repair_ticket')->where('payable_id', $ticket->id)->sum('amount');
+        $ticket->update(['balance' => round($base - (float) $ticket->downpayment - $paid, 2)]);
 
         return $ticket->fresh();
     }

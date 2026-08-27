@@ -32,4 +32,26 @@ class RepairTicketPolicy
     {
         return $toStatus === 'released' ? $user->can('tickets.release') : $user->can('tickets.update');
     }
+
+    public function verifyImei(User $user, RepairTicket $ticket): bool
+    {
+        return $user->can('tickets.update');
+    }
+
+    /** The owner-only escape hatch for a mismatched or unreadable IMEI. */
+    public function overrideImei(User $user, RepairTicket $ticket): bool
+    {
+        return $user->can('tickets.imei_override');
+    }
+
+    public function recordPartSwap(User $user, RepairTicket $ticket): bool
+    {
+        return $user->can('tickets.update');
+    }
+
+    /** Collecting money is a POS action even when it's against a ticket, not a sale. */
+    public function recordPayment(User $user, RepairTicket $ticket): bool
+    {
+        return $user->can('sales.create');
+    }
 }

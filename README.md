@@ -134,6 +134,38 @@ clears config cache and runs the suite. Notable coverage so far:
   with a signed URL response, and the quote send/approve/decline flow
   including its auto-transitions (`tests/Feature/Api/V1/RepairTicketTest.php`,
   `TicketLineTest.php`, `TicketPhotoTest.php`, `TicketQuoteTest.php`).
+- Inventory: supplier CRUD and soft-delete, serialized-unit registration
+  posting a receipt movement, the non-serialized-product and
+  imei-or-serial-number validation guards, `sold` rejected on the plain
+  update endpoint, a write-off posting its `-1` movement, stock adjustments
+  keeping the ledger and the cached level in sync, the zero-delta and
+  serialized-unit-not-±1 validation guards, and the `inventory.adjust` vs
+  `inventory.view` permission split (`SupplierTest.php`,
+  `SerializedUnitTest.php`, `StockAdjustmentTest.php`, `InventoryTest.php`).
+- Chain of custody: matching and mismatched IMEI scans both recording
+  (never rejecting) correctly, invalid-IMEI validation, the
+  `tickets.imei_override` permission gate, the release transition blocked
+  with `409 IMEI_MISMATCH` until a matching (or overridden) release-phase
+  verification exists, part-swap recording and its removed-photo-belongs-
+  to-this-ticket guard, and the full loop from ticket creation through the
+  exposed `verification_token` to a successful unauthenticated
+  `GET /public/verify/{token}`, including 404s for unknown/revoked tokens
+  (`ImeiVerificationTest.php`, `PartSwapTest.php`,
+  `PublicVerificationTest.php`).
+- POS: opening/closing a shift (including the reconcile-cash-only-not-gcash
+  behavior and the double-open/double-close guards), a cashier blocked from
+  closing another's shift, cash movements against open vs. closed shifts,
+  sale creation for all three sellable types (product stock consumption,
+  serialized-unit status flip and its double-sell guard, service with no
+  stock effect), line and sale-scope discounts (including the senior-citizen
+  VAT-exempt-plus-20%-off computation), the insufficient-stock and
+  no-open-shift guards, voiding a sale and confirming stock is restored,
+  split payments against a sale and the overpayment guard, and — tying
+  Stages 5/7/8 together — a ticket payment reducing balance, its own
+  overpayment guard, and the full release guard chain (IMEI cleared but
+  balance unpaid still blocks release; paying it off then unblocks it)
+  (`ShiftTest.php`, `SaleTest.php`, `TicketPaymentTest.php`,
+  `DiscountCalculatorTest.php`).
 
 ## Data layer
 
@@ -224,10 +256,15 @@ the five catalog models, customers, and customer devices (nested under
 `/customers/{customer}/devices`, plus the flagship
 `GET /devices/by-imei/{imei}` cross-customer, cross-branch history lookup).
 Stage 5 adds repair tickets, their state machine, timeline, line items,
-photos, and quotes (below). Every one of these routes, plus the Stage 2
-auth/health routes, is listed by `php artisan route:list`. Inventory, POS,
-and the rest of the domain follow the same pattern in later stages — see
-`docs/design/01-domain-design.md` §8 for the build order.
+photos, and quotes; Stage 6 adds the inventory core — suppliers, serialized
+units, and the stock ledger; Stage 7 adds chain of custody — IMEI
+checkpoints, part swaps, and the one public (unauthenticated) endpoint in
+the whole API; Stage 8 adds POS — shifts, sales with VAT/discount
+computation, and payments (below). Every one of these routes, plus the
+Stage 2 auth/health routes, is listed by `php artisan route:list`.
+Purchase orders/goods receipts, refunds, and the rest of the domain follow
+the same pattern in later stages — see `docs/design/01-domain-design.md`
+§8 for the build order.
 
 ## Repairs: tickets, state machine, timeline, photos, quotes (Stage 5)
 
@@ -297,6 +334,187 @@ crashes the moment `json_encode()` reaches the null-wrapped nested resource.
 Fixed by calling `->resolve($request)` instead — same output, but through
 the path that actually filters. Caught by
 `tests/Feature/Api/V1/TicketQuoteTest.php`.
+
+## Inventory: suppliers, serialized units, the stock ledger (Stage 6)
+
+- **The ledger** (`App\Services\StockMovementRecorder`) — the one place
+  allowed to write `stock_movements` (append-only, the source of truth) and
+  keep `stock_levels` (a cached, never-authoritative balance) in sync.
+  Generalizes the pattern `InventorySeeder::postReceipt()` established for
+  the demo data: lock the `stock_levels` row (`SELECT ... FOR UPDATE`,
+  get-or-create with the same create/race-retry shape as `Sequence::next()`),
+  compute the new balance, append the movement, update the cache — all
+  inside the caller's transaction. Every future stock-moving action (goods
+  receipts, sales, ticket-line consumption, transfers) should call this
+  rather than touch either table directly.
+- **Suppliers** (`/suppliers`) — plain CRUD, soft-deletable. Read is gated
+  by `inventory.view` (every role has it); write is gated by a new
+  `suppliers.manage` permission (owner/manager only) rather than
+  `inventory.adjust`, since managing a supplier's profile isn't itself a
+  stock movement.
+- **Serialized units** (`/serialized-units`, no `destroy`) — one row per
+  IMEI/serial-tracked handset. Registering one (`inventory.receive`) is
+  treated as an ad-hoc receipt: it posts a `+1` `receipt` movement via the
+  recorder. A `status` change on update goes through
+  `SerializedUnit::transitionStatus()` (Rule 4: a unit can only be sold
+  once — compare-and-swap under a row lock); flipping to `written_off`
+  additionally posts a `-1` `write_off` movement so `stock_levels` doesn't
+  drift. `sold` is rejected by the Form Request on purpose — that status
+  change belongs to the sales flow (Stage 8), which will post its own
+  `sale`-referenced movement instead of this generic `PATCH`.
+- **Stock adjustments** (`GET|POST /stock-adjustments`, no update/delete —
+  a bad adjustment is corrected with an opposite one, not edited) — the
+  write path exercised for now while purchase orders and goods receipts are
+  still pending. Each line posts its own movement
+  (`reference_type: 'stock_adjustment'`); a line naming a
+  `serialized_unit_ulid` must move by exactly `±1`, enforced in the Form
+  Request's `withValidator()` since it's a same-line, cross-field
+  constraint `required_if`/`prohibited_if` can't express.
+- **Inventory reads** (`GET /inventory/levels`, `GET /inventory/movements`)
+  — the cache and the ledger, respectively; movements are cursor-paginated
+  same as the ticket timeline. `reference_id` (an internal `BIGINT`) is
+  never serialized — only the human-readable `reference_type` string ships,
+  since there's no `morphMap` yet to resolve it back to the referenced
+  row's own ulid.
+
+**Deliberately deferred to a later pass**: purchase orders and goods
+receipts (the *formal* restocking flow — `serialized-units` and
+`stock-adjustments` above are the stand-ins until then), and wiring real
+part-line stock consumption into `RepairTicketService::addLine()` (flagged
+back in Stage 5, still open).
+
+**A third instance of the branch-scoped-relation bug** (see the two above):
+`StockAdjustment.creator` is a `User`, which is branch-scoped — whoever
+posted the adjustment won't always share the viewer's branch. Applied the
+same `withoutGlobalScopes()` treatment up front this time, in
+`StockAdjustmentRepository::filteredQuery()` and everywhere else that
+relation loads, rather than waiting to find it broken.
+
+## Chain of custody: IMEI checkpoints, part swaps, public proof (Stage 7)
+
+- **IMEI verifications** (`GET|POST /tickets/{ticket}/imei-verifications`,
+  no `destroy`/`update` — it's an append-only checkpoint log, no ulid of
+  its own per the design doc) — a scan at any of the four phases
+  (`intake`/`pre_repair`/`post_repair`/`release`) is always recorded,
+  match or not; a mismatch doesn't reject the request, it's just logged
+  with `matches_expected: false` for the release guard (next) to act on.
+- **The release guard, finally wired**: `ready_for_pickup`/`unclaimed` →
+  `released` now requires a `release`-phase verification that matches (or
+  an override) — `RepairTicketService::assertImeiClearedForRelease()`
+  throws `IMEI_MISMATCH` (`409`) otherwise. This closes the guard
+  `TicketStateMachine`'s docblock flagged as open since Stage 5; the
+  balance-settlement half (Stage 8 / POS) is still pending.
+- **The override endpoint** (`POST .../imei-verifications/override`,
+  `tickets.imei_override`, owner/manager only) is a second, independent
+  verification row carrying its own `override_reason` and
+  `overridden_by` — not an edit to a past one, since the table
+  deliberately has no ulid to target. Self-contained and fully logged
+  either way.
+- **Part swaps** (`GET|POST /tickets/{ticket}/part-swaps`) — a
+  documentation-only record of what physically came out and went in,
+  distinct from `ticket_lines` (the billing line for the same part).
+  `removed_photo_ulid` references an existing `TicketPhoto` on the *same*
+  ticket (checked in the Form Request's `withValidator()`, since
+  `Rule::exists` alone can't scope to the route's ticket); the response's
+  `removed_photo_url` is a controller-set virtual attribute (signed URL),
+  same pattern as `TicketPhotoResource::url`.
+- **Public verification** (`GET /public/verify/{token}`) — the one
+  unauthenticated endpoint in the whole API, rate-limited instead of
+  gated by auth (`public-verify`, 10/min/IP, registered back in Stage 2's
+  `AppServiceProvider` in anticipation of this). Strictly redacted: no
+  customer name/contact, no `claim_code` (that's the pickup credential,
+  not a public proof), no unlock info, no pricing, no technician identity.
+  `App\Models\VerificationToken` (created alongside every ticket since
+  Stage 5, but never surfaced until now) backs it — a random 32-char
+  token, not the ticket's own ulid, so revoking a customer's proof link
+  doesn't have to touch the ticket record itself.
+
+**A closed loop**: the verification token existed since Stage 5 but had no
+consumer and wasn't exposed anywhere, so this stage also added
+`RepairTicketResource.verification_token` (staff-only, via
+`tickets.view`) — without it, `GET /public/verify/{token}` was reachable
+in principle but not in practice, since nothing in the authenticated API
+could ever produce a token to try it with.
+
+## POS: shifts, sales, payments (Stage 8)
+
+- **Shifts** (`POST /shifts/open`, `POST /shifts/{shift}/close`,
+  `GET /shifts`/`{shift}`, `POST /shifts/{shift}/cash-movements`) — the
+  branch and cashier are always the authenticated actor's own, never a
+  request field. `close()` computes `expected_cash` from *cash-only*
+  payments recorded during the shift (`Payment.shift_id`, `method=cash` —
+  gcash/card/etc. never touch the drawer) plus cash movements in/out,
+  compared against the counted amount for `variance`. A cashier closes
+  their own shift; owner/manager can close on anyone's behalf
+  (`ShiftPolicy::close()`). Reopening while one is already open, or
+  closing/adding a cash movement to an already-closed one, are both
+  rejected (422 and 409 `SHIFT_NOT_OPEN` respectively — deliberately
+  different codes: the first is a request-validation concern the client
+  controls, the second is a state conflict on the resource itself).
+- **Sales** (`GET|POST /sales`, `GET /sales/{sale}`,
+  `POST /sales/{sale}/void`, `POST /sales/{sale}/payments`) — checkout
+  requires an open shift (`409 SHIFT_NOT_OPEN` otherwise) and supports
+  three sellable types: `product` (checks and consumes stock via
+  `StockMovementRecorder`, `422 INSUFFICIENT_STOCK` if short),
+  `serialized_unit` (flips the unit `in_stock → sold` through its existing
+  `transitionStatus()` guard — `409 UNIT_ALREADY_SOLD` on a repeat sale),
+  and `service` (no stock effect). `sale_lines.sellable_type=ticket_balance`
+  from the schema is **not** implemented — see below. `void()` reverses
+  both: a `return_in` stock movement for products, and the serialized
+  unit's status back to `in_stock`; a full refund flow with per-line
+  restocking choices is a separate, not-yet-built action.
+- **VAT and discounts** (`App\Support\SaleCalculator`, unit-testable
+  without a database) — VAT-inclusive pricing, `vat = gross / 1.12 * 0.12`
+  (the same formula `ShiftAndSalesSeeder` already used for demo data,
+  generalized to handle discounts). At most one discount per line
+  (percent/amount) plus one for the whole sale; `senior_citizen`/`pwd` is
+  sale-scope only — legally it's the customer's whole transaction that's
+  exempt, not individual items — and converts that portion to VAT-exempt
+  *and* takes 20% off the VAT-exclusive base, matching how PH retail OCR
+  receipts show it. The 20% rate applies even if the client omits `value`
+  for that discount type (it's legally fixed, not something the cashier
+  sets). `zero_rated_sales` is always 0 — nothing this shop sells
+  qualifies for zero-rating. A non-VAT-registered branch (`Branch.vat_registered`)
+  still fills `vatable_sales` but `vat_amount` is always 0.
+  `GET /discounts/calculate` runs the exact same calculator statelessly,
+  for a POS UI to preview a discount before checkout commits to it.
+- **Payments** (`App\Services\PaymentRecorder`, shared by sales and
+  tickets) — append-only, handles cash tendered/change, and rejects
+  overpayment past what's actually owed (`409 PAYMENT_SUM_MISMATCH`,
+  ~1-centavo rounding tolerance). A sale supports split payments across
+  methods via repeated calls to the same endpoint (part cash, part gcash);
+  there's no `sale.balance_due` column, so "how much is left" is always
+  `total − sum(payments)` computed on demand.
+- **A repair ticket's balance is paid directly**
+  (`POST /tickets/{ticket}/payments`, `payable_type=repair_ticket`), never
+  through a Sale wrapper — the schema's `sale_lines.sellable_type=ticket_balance`
+  has no column linking a line back to a specific ticket, so this endpoint
+  is the actual path, not that one. `RepairTicketService::recalculateBalance()`
+  now subtracts `SUM(payments)` in addition to the intake-time
+  `downpayment` column (which stays separate rather than becoming a
+  retroactive Payment row, since it predates POS/shifts existing at
+  intake). **This closes the second and last release guard** flagged open
+  since Stage 5: `ready_for_pickup`/`unclaimed` → `released` now also
+  requires `balance <= 0`
+  (`RepairTicketService::assertBalanceSettledForRelease()`, reusing
+  `PaymentSumMismatch` since an unpaid balance *is* a payment-sum mismatch)
+  — the IMEI half was closed in Stage 7, and this was the only guard
+  `TicketStateMachine`'s docblock still listed as open.
+
+**A real bug this surfaced**: `Sale`'s `#[Fillable]` attribute list was
+missing `sale_number` — invisible until now because `ShiftAndSalesSeeder`
+only ever used `Sale::factory()->create()`, and Eloquent factories fill
+attributes directly, bypassing mass-assignment guarding entirely. The
+first real `Sale::create([...])` call (`SaleService`) hit a `NOT NULL`
+database error instead, since the column silently dropped out of the
+insert. Fixed by adding it to the model's `Fillable` list. A reminder that
+factory-only coverage of a model can hide a broken `Fillable` array
+indefinitely.
+
+**Deliberately deferred to a later pass**: refunds (`GET|POST /refunds`
+doesn't exist yet — voiding a whole sale is the only reversal path right
+now), and the `ticket_balance` sellable type (superseded by the direct
+ticket-payment endpoint above).
 
 ### A real bug this surfaced: BranchScope and cross-branch lookups
 

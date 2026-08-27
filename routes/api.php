@@ -9,9 +9,20 @@ use App\Http\Controllers\Api\V1\Catalog\ProductController;
 use App\Http\Controllers\Api\V1\Catalog\ServiceController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\CustomerDeviceController;
+use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\ImeiVerificationController;
+use App\Http\Controllers\Api\V1\InventoryController;
+use App\Http\Controllers\Api\V1\PartSwapController;
+use App\Http\Controllers\Api\V1\PublicVerificationController;
 use App\Http\Controllers\Api\V1\RepairTicketController;
+use App\Http\Controllers\Api\V1\SaleController;
+use App\Http\Controllers\Api\V1\SerializedUnitController;
+use App\Http\Controllers\Api\V1\ShiftController;
+use App\Http\Controllers\Api\V1\StockAdjustmentController;
+use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\TicketLineController;
+use App\Http\Controllers\Api\V1\TicketPaymentController;
 use App\Http\Controllers\Api\V1\TicketPhotoController;
 use App\Http\Controllers\Api\V1\TicketQuoteController;
 use App\Http\Controllers\Api\V1\UserController;
@@ -25,6 +36,11 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/ready', [HealthController::class, 'ready']);
 
     Route::post('/auth/token', [TokenController::class, 'store']);
+
+    // The one unauthenticated endpoint in the API — chain-of-custody proof,
+    // not a repair-management action. Its own strict limiter (10/min/IP,
+    // see AppServiceProvider), not auth, is what keeps it from being scraped.
+    Route::middleware('throttle:public-verify')->get('/public/verify/{token}', [PublicVerificationController::class, 'show']);
 
     Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/auth/tokens', [TokenController::class, 'index']);
@@ -66,6 +82,55 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/tickets/{ticket}/quotes', [TicketQuoteController::class, 'index']);
         Route::post('/tickets/{ticket}/quotes', [TicketQuoteController::class, 'store']);
         Route::post('/tickets/{ticket}/quotes/{quote}/respond', [TicketQuoteController::class, 'respond']);
+
+        // Chain of custody — IMEI checkpoints and part swaps. release now
+        // requires a matching release-phase verification (or an owner
+        // override) — see RepairTicketService::assertImeiClearedForRelease().
+        Route::get('/tickets/{ticket}/imei-verifications', [ImeiVerificationController::class, 'index']);
+        Route::post('/tickets/{ticket}/imei-verifications', [ImeiVerificationController::class, 'store']);
+        Route::post('/tickets/{ticket}/imei-verifications/override', [ImeiVerificationController::class, 'override']);
+
+        Route::get('/tickets/{ticket}/part-swaps', [PartSwapController::class, 'index']);
+        Route::post('/tickets/{ticket}/part-swaps', [PartSwapController::class, 'store']);
+
+        // A ticket's balance is paid directly, not through a Sale wrapper —
+        // see TicketPaymentController's docblock. This is also what the
+        // released release guard now requires be settled.
+        Route::get('/tickets/{ticket}/payments', [TicketPaymentController::class, 'index']);
+        Route::post('/tickets/{ticket}/payments', [TicketPaymentController::class, 'store']);
+
+        // Inventory — Stage 6: suppliers, serialized units, the stock
+        // ledger (stock_movements is the source of truth; stock_levels is
+        // a derived cache — see StockMovementRecorder). Purchase orders and
+        // goods receipts are deferred to a later pass; stock_adjustments is
+        // the write path exercised for now.
+        Route::apiResource('suppliers', SupplierController::class);
+        Route::apiResource('serialized-units', SerializedUnitController::class)
+            ->except(['destroy']);
+
+        Route::get('/inventory/levels', [InventoryController::class, 'levels']);
+        Route::get('/inventory/movements', [InventoryController::class, 'movements']);
+
+        Route::get('/stock-adjustments', [StockAdjustmentController::class, 'index']);
+        Route::post('/stock-adjustments', [StockAdjustmentController::class, 'store']);
+        Route::get('/stock-adjustments/{stockAdjustment}', [StockAdjustmentController::class, 'show']);
+
+        // POS — Stage 8: shifts, sales (VAT + discounts, see SaleCalculator),
+        // payments. Refunds and the ticket_balance sellable_type are
+        // deliberately deferred — see README.
+        Route::get('/shifts', [ShiftController::class, 'index']);
+        Route::post('/shifts/open', [ShiftController::class, 'open']);
+        Route::get('/shifts/{shift}', [ShiftController::class, 'show']);
+        Route::post('/shifts/{shift}/close', [ShiftController::class, 'close']);
+        Route::post('/shifts/{shift}/cash-movements', [ShiftController::class, 'addCashMovement']);
+
+        Route::get('/sales', [SaleController::class, 'index']);
+        Route::post('/sales', [SaleController::class, 'store']);
+        Route::get('/sales/{sale}', [SaleController::class, 'show']);
+        Route::post('/sales/{sale}/void', [SaleController::class, 'void']);
+        Route::post('/sales/{sale}/payments', [SaleController::class, 'addPayment']);
+
+        Route::get('/discounts/calculate', [DiscountController::class, 'calculate']);
     });
 
     // Exists only so the exception-handling test suite can assert the 500
