@@ -11,14 +11,17 @@ use App\Support\Api\ErrorCode;
  * the concrete design decision. Terminal states: released, returned_as_is.
  * unclaimed is semi-terminal — it only exits via released.
  *
- * The transition graph itself doesn't encode either of the following — both
- * live as guards in RepairTicketService::transition() instead, since they
- * depend on state outside the status column:
- *   - ready_for_pickup/unclaimed → released requires a matching IMEI
- *     verification at the release phase, or an owner override — enforced
- *     (see assertImeiClearedForRelease()).
- *   - ...released should also require a settled balance (Stage 8 / POS
- *     payments) — still open.
+ * The transition graph itself doesn't encode the following — it lives as a
+ * guard in RepairTicketService::transition() instead, since it depends on
+ * state outside the status column:
+ *   - ready_for_pickup/unclaimed → released requires a settled balance
+ *     (Stage 8 / POS payments) — see assertBalanceSettledForRelease().
+ * ready_for_pickup/unclaimed → released deliberately does NOT require a
+ * release-phase IMEI verification (or override) — that guard existed
+ * briefly but was removed: it blocked real releases whenever staff hadn't
+ * run a release-phase scan, and IMEI verification is chain-of-custody
+ * documentation, not a release gate. imei-verifications/override still
+ * record every scan and every override exactly as before.
  * Also still open per docs/design §7 Flag 9: what happens after an
  * unclaimed unit ages out — no "forfeited" state exists yet.
  */
@@ -29,7 +32,14 @@ class TicketStateMachine
         'diagnosed' => ['awaiting_approval', 'in_repair', 'unrepairable'],
         'awaiting_approval' => ['in_repair', 'awaiting_parts', 'returned_as_is'],
         'awaiting_parts' => ['in_repair', 'unrepairable'],
-        'in_repair' => ['qc', 'awaiting_parts', 'unrepairable'],
+        // ready_for_pickup direct from in_repair matches the board's actual
+        // columns (TO CHECK / WAITING FOR CUSTOMER / WAITING FOR PARTS /
+        // IN REPAIR / READY TO CLAIM — no separate QC column). QC now lives
+        // as data on the ticket's finding record (finding.qc_passed), not
+        // as a required intermediate ticket status. `qc` itself stays a
+        // legal status/edge for any ticket already sitting there or for a
+        // branch that still wants the extra checkpoint.
+        'in_repair' => ['ready_for_pickup', 'qc', 'awaiting_parts', 'unrepairable'],
         'qc' => ['ready_for_pickup', 'in_repair'],
         'ready_for_pickup' => ['released', 'unclaimed'],
         'unclaimed' => ['released'],

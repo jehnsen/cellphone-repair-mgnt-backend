@@ -17,6 +17,7 @@ class TicketLineResource extends JsonResource
             'unit_cost' => $this->when($request->user()?->can('reports.margin.view'), $this->unit_cost),
             'unit_price' => $this->unit_price,
             'amount' => $this->amount,
+            'stock_consumed' => $this->stock_movement_id !== null,
             'product' => new ProductResource($this->whenLoaded('product')),
             'service' => new ServiceResource($this->whenLoaded('service')),
             'created_at' => $this->created_at?->toIso8601String(),

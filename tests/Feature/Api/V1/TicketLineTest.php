@@ -4,13 +4,16 @@ use App\Models\Branch;
 use App\Models\Product;
 use App\Models\RepairTicket;
 use App\Models\Service;
+use App\Models\StockLevel;
+use App\Models\StockMovement;
 use App\Models\TicketLine;
 
-it('adds a part line and recalculates the amount', function () {
+it('adds a part line, recalculates the amount, and consumes the part from stock', function () {
     $branch = Branch::factory()->create();
     [, $token] = userWithRole('manager', $branch);
     $ticket = RepairTicket::factory()->create(['branch_id' => $branch->id]);
-    $product = Product::factory()->create();
+    $product = Product::factory()->create(['track_inventory' => true]);
+    StockLevel::factory()->create(['product_id' => $product->id, 'branch_id' => $branch->id, 'on_hand_qty' => 5, 'reserved_qty' => 0]);
 
     $response = $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/lines", [
         'line_type' => 'part',
@@ -21,7 +24,51 @@ it('adds a part line and recalculates the amount', function () {
         'unit_price' => 900,
     ]);
 
-    $response->assertStatus(201)->assertJsonPath('data.amount', '900.00');
+    $response->assertStatus(201)
+        ->assertJsonPath('data.amount', '900.00')
+        ->assertJsonPath('data.stock_consumed', true);
+
+    expect(StockLevel::withoutGlobalScopes()->where('product_id', $product->id)->where('branch_id', $branch->id)->first()->on_hand_qty)
+        ->toBe('4.00');
+    expect(StockMovement::withoutGlobalScopes()->where('product_id', $product->id)->where('movement_type', 'ticket_consumption')->exists())
+        ->toBeTrue();
+    expect(TicketLine::first()->stock_movement_id)->not->toBeNull();
+});
+
+it('rejects a part line when there is not enough stock on hand', function () {
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('manager', $branch);
+    $ticket = RepairTicket::factory()->create(['branch_id' => $branch->id]);
+    $product = Product::factory()->create(['track_inventory' => true]);
+    StockLevel::factory()->create(['product_id' => $product->id, 'branch_id' => $branch->id, 'on_hand_qty' => 0, 'reserved_qty' => 0]);
+
+    $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/lines", [
+        'line_type' => 'part',
+        'product_ulid' => $product->ulid,
+        'description' => 'Replacement screen',
+        'quantity' => 1,
+        'unit_cost' => 500,
+        'unit_price' => 900,
+    ])->assertStatus(422)->assertJsonPath('error.code', 'INSUFFICIENT_STOCK');
+
+    expect(TicketLine::count())->toBe(0);
+});
+
+it('adds a part line for an untracked product without touching stock', function () {
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('manager', $branch);
+    $ticket = RepairTicket::factory()->create(['branch_id' => $branch->id]);
+    $product = Product::factory()->create(['track_inventory' => false]);
+
+    $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/lines", [
+        'line_type' => 'part',
+        'product_ulid' => $product->ulid,
+        'description' => 'Miscellaneous adhesive',
+        'quantity' => 1,
+        'unit_price' => 50,
+    ])->assertStatus(201)->assertJsonPath('data.stock_consumed', false);
+
+    expect(StockMovement::withoutGlobalScopes()->where('product_id', $product->id)->exists())->toBeFalse();
 });
 
 it('adds a labor line tied to a service instead of a product', function () {

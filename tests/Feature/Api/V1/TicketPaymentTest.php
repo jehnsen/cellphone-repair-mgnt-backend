@@ -40,25 +40,18 @@ it('rejects a ticket payment that would overpay the balance', function () {
     ])->assertStatus(409)->assertJsonPath('error.code', 'PAYMENT_SUM_MISMATCH');
 });
 
-it('blocks release until the balance is fully paid, even with IMEI cleared', function () {
+it('blocks release until the balance is fully paid', function () {
+    // The only remaining release guard — IMEI verification no longer
+    // blocks release (see ImeiVerificationTest), so this needs no scan
+    // precondition to isolate it.
     $branch = Branch::factory()->create();
-    [$actor, $token] = userWithRole('manager', $branch);
+    [, $token] = userWithRole('manager', $branch);
     $ticket = RepairTicket::factory()->create([
         'branch_id' => $branch->id,
         'status' => 'ready_for_pickup',
         'approved_amount' => 500,
         'downpayment' => 0,
         'balance' => 500,
-    ]);
-
-    // Bypass the scan itself (already covered by ImeiVerificationTest) and
-    // seed a matching release-phase verification directly, so this test is
-    // purely about the balance half of the release guard.
-    $ticket->imeiVerifications()->create([
-        'phase' => 'release',
-        'scanned_imei' => '490154203237518',
-        'matches_expected' => true,
-        'actor_id' => $actor->id,
     ]);
 
     $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/transition", [

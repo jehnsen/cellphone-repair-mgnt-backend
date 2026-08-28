@@ -129,6 +129,30 @@ it('allows a legal status transition and records a timeline event', function () 
     expect($types)->toContain('status_changed');
 });
 
+it('allows in_repair to move straight to ready_for_pickup, matching the board with no separate QC column', function () {
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('manager', $branch);
+    $ticket = RepairTicket::factory()->create(['branch_id' => $branch->id, 'status' => 'in_repair']);
+
+    $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/transition", [
+        'to_status' => 'ready_for_pickup',
+    ])->assertOk()->assertJsonPath('data.status', 'ready_for_pickup');
+});
+
+it('still allows the optional qc checkpoint between in_repair and ready_for_pickup', function () {
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('manager', $branch);
+    $ticket = RepairTicket::factory()->create(['branch_id' => $branch->id, 'status' => 'in_repair']);
+
+    $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/transition", [
+        'to_status' => 'qc',
+    ])->assertOk()->assertJsonPath('data.status', 'qc');
+
+    $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/transition", [
+        'to_status' => 'ready_for_pickup',
+    ])->assertOk()->assertJsonPath('data.status', 'ready_for_pickup');
+});
+
 it('rejects an illegal status transition', function () {
     $branch = Branch::factory()->create();
     [, $token] = userWithRole('manager', $branch);

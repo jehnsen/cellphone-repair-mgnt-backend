@@ -144,11 +144,12 @@ clears config cache and runs the suite. Notable coverage so far:
   `SerializedUnitTest.php`, `StockAdjustmentTest.php`, `InventoryTest.php`).
 - Chain of custody: matching and mismatched IMEI scans both recording
   (never rejecting) correctly, invalid-IMEI validation, the
-  `tickets.imei_override` permission gate, the release transition blocked
-  with `409 IMEI_MISMATCH` until a matching (or overridden) release-phase
-  verification exists, part-swap recording and its removed-photo-belongs-
-  to-this-ticket guard, and the full loop from ticket creation through the
-  exposed `verification_token` to a successful unauthenticated
+  `tickets.imei_override` permission gate, the release transition
+  succeeding regardless of IMEI-verification state (no release-phase scan,
+  a mismatched one, or an overridden one), part-swap recording and its
+  removed-photo-belongs-to-this-ticket guard, and the full loop from
+  ticket creation through the exposed `verification_token` to a
+  successful unauthenticated
   `GET /public/verify/{token}`, including 404s for unknown/revoked tokens
   (`ImeiVerificationTest.php`, `PartSwapTest.php`,
   `PublicVerificationTest.php`).
@@ -162,8 +163,9 @@ clears config cache and runs the suite. Notable coverage so far:
   no-open-shift guards, voiding a sale and confirming stock is restored,
   split payments against a sale and the overpayment guard, and — tying
   Stages 5/7/8 together — a ticket payment reducing balance, its own
-  overpayment guard, and the full release guard chain (IMEI cleared but
-  balance unpaid still blocks release; paying it off then unblocks it)
+  overpayment guard, and the release guard (balance unpaid still blocks
+  release; paying it off then unblocks it, with no dependency on IMEI
+  verification state)
   (`ShiftTest.php`, `SaleTest.php`, `TicketPaymentTest.php`,
   `DiscountCalculatorTest.php`).
 - Purchase orders/goods receipts/refunds/buy-back/installments/reporting:
@@ -318,11 +320,12 @@ its state machine, never gets removed) plus four nested resources:
   `returned_as_is` — each auto-transition only fires if it's still legal
   from the ticket's *current* status, since a quote can be answered late.
 
-Two guards the `ready_for_pickup → released` edge still needs are
-deliberately not enforced yet, per `TicketStateMachine`'s docblock: a
-matching IMEI verification (Stage 6, chain of custody) and a settled balance
-(Stage 8, POS). Stock consumption for `part` ticket lines isn't wired to the
-inventory ledger yet either (Stage 7).
+A settled-balance guard on the `ready_for_pickup → released` edge is
+deliberately not enforced yet, per `TicketStateMachine`'s docblock (Stage
+8, POS). A release-phase IMEI-verification guard was also tried at Stage 7
+and then deliberately removed — see the Chain of Custody section below.
+Stock consumption for `part` ticket lines was left unwired at this stage —
+see the note further down where it's actually wired up.
 
 ### Two more real bugs this stage surfaced
 
@@ -414,13 +417,14 @@ relation loads, rather than waiting to find it broken.
   its own per the design doc) — a scan at any of the four phases
   (`intake`/`pre_repair`/`post_repair`/`release`) is always recorded,
   match or not; a mismatch doesn't reject the request, it's just logged
-  with `matches_expected: false` for the release guard (next) to act on.
-- **The release guard, finally wired**: `ready_for_pickup`/`unclaimed` →
-  `released` now requires a `release`-phase verification that matches (or
-  an override) — `RepairTicketService::assertImeiClearedForRelease()`
-  throws `IMEI_MISMATCH` (`409`) otherwise. This closes the guard
-  `TicketStateMachine`'s docblock flagged as open since Stage 5; the
-  balance-settlement half (Stage 8 / POS) is still pending.
+  for later reference — it no longer feeds any release guard (next).
+- **No release guard on IMEI, by design**: a `release`-phase-verification
+  gate on `ready_for_pickup`/`unclaimed` → `released` was built and then
+  deliberately removed — it blocked real releases whenever staff hadn't
+  run a release-phase scan (or a seeded device's IMEI never passed Luhn to
+  begin with). IMEI verification stays chain-of-custody documentation, not
+  a release gate; only the balance-settlement guard (Stage 8 / POS) still
+  blocks release.
 - **The override endpoint** (`POST .../imei-verifications/override`,
   `tickets.imei_override`, owner/manager only) is a second, independent
   verification row carrying its own `override_reason` and
@@ -510,13 +514,13 @@ could ever produce a token to try it with.
   now subtracts `SUM(payments)` in addition to the intake-time
   `downpayment` column (which stays separate rather than becoming a
   retroactive Payment row, since it predates POS/shifts existing at
-  intake). **This closes the second and last release guard** flagged open
-  since Stage 5: `ready_for_pickup`/`unclaimed` → `released` now also
-  requires `balance <= 0`
+  intake). **This closes the release guard** flagged open since Stage 5:
+  `ready_for_pickup`/`unclaimed` → `released` now requires `balance <= 0`
   (`RepairTicketService::assertBalanceSettledForRelease()`, reusing
   `PaymentSumMismatch` since an unpaid balance *is* a payment-sum mismatch)
-  — the IMEI half was closed in Stage 7, and this was the only guard
-  `TicketStateMachine`'s docblock still listed as open.
+  — a release-phase IMEI-verification guard was also built in Stage 7, but
+  it was later deliberately removed (see Chain of Custody above); balance
+  is the only thing that still blocks release.
 
 **A real bug this surfaced**: `Sale`'s `#[Fillable]` attribute list was
 missing `sale_number` — invisible until now because `ShiftAndSalesSeeder`
@@ -648,3 +652,37 @@ reliably re-authenticate as the second user — the first user's resolution
 sticks. Always split "user A does X, user B is denied X" into two separate
 `it()` tests rather than chaining both calls in one. (Same root cause as the
 token-revocation test note from Stage 2.)
+
+## Repair-ticket part consumption, wired to inventory
+
+The one stock-moving action flagged open since Stage 5 — a `part` ticket
+line billed the customer but never touched the shelf. `RepairTicketService::addLine()`
+now does both, in the same transaction as the `TicketLine` row it always
+wrote:
+
+- For a `part` line whose product has `track_inventory=true`: checks
+  `on_hand_qty − reserved_qty` first and throws `INSUFFICIENT_STOCK`
+  (`422`) if the branch doesn't have enough on hand — same guard shape as
+  `SaleService::resolveProductLine()` — then records a `ticket_consumption`
+  movement (`stock_movements.movement_type` already had this value since
+  Stage 6; it just sat unused) via `StockMovementRecorder::record()` with
+  a negative quantity.
+- `ticket_lines.stock_movement_id` — a column that had sat unused since
+  the Stage 5 migration, anticipating exactly this — now gets stamped
+  with the resulting movement's id, and `TicketLineResource` exposes it
+  as `stock_consumed: true/false` so a client can tell at a glance whether
+  a given line actually moved stock.
+- A `labor` line, or a `part` line against an untracked product
+  (`track_inventory=false`), never touches stock at all — the former is
+  guaranteed by `ticket_lines`' own CHECK constraint (a `labor` line can't
+  carry a `product_id`), the latter mirrors what POS already does for
+  untracked products.
+- **Known gap**: there's no `destroy`/reversal path — no `DELETE` route
+  exists for ticket lines at all yet, so nothing currently un-consumes a
+  line's stock if it's ever removed. Not an issue today since removal
+  isn't possible through the API, but worth remembering if that endpoint
+  gets added later.
+
+(`tests/Feature/Api/V1/TicketLineTest.php`: stock decrementing and
+`stock_movement_id` getting set on success, the insufficient-stock 422,
+and an untracked product skipping the ledger entirely.)

@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Models\Branch;
 use App\Models\CustomerDevice;
 use App\Models\Payment;
+use App\Models\Product;
 use App\Models\RepairTicket;
 use App\Models\Sequence;
+use App\Models\StockLevel;
 use App\Models\TicketLine;
 use App\Models\User;
 use App\Models\VerificationToken;
@@ -25,6 +27,7 @@ class RepairTicketService
     public function __construct(
         private readonly RepairTicketRepositoryInterface $tickets,
         private readonly TicketEventRecorder $events,
+        private readonly StockMovementRecorder $movements,
     ) {}
 
     public function list(): LengthAwarePaginator
@@ -111,7 +114,6 @@ class RepairTicketService
             TicketStateMachine::assertCanTransition($locked->status, $toStatus);
 
             if ($toStatus === 'released') {
-                $this->assertImeiClearedForRelease($locked);
                 $this->assertBalanceSettledForRelease($locked);
             }
 
@@ -125,32 +127,20 @@ class RepairTicketService
     }
 
     /**
-     * The IMEI half of the release guard flagged in TicketStateMachine's
-     * docblock (chain of custody, docs/design/01-domain-design.md §2.5) —
-     * a settled balance (Stage 8 / POS) is still the other, open half.
-     */
-    private function assertImeiClearedForRelease(RepairTicket $ticket): void
-    {
-        $cleared = $ticket->imeiVerifications()
-            ->where('phase', 'release')
-            ->where(function ($query) {
-                $query->where('matches_expected', true)->orWhereNotNull('overridden_by');
-            })
-            ->exists();
-
-        if (! $cleared) {
-            throw new ApiException(
-                ErrorCode::ImeiMismatch,
-                'Releasing this ticket requires a matching IMEI verification at the release phase (or an owner override).',
-            );
-        }
-    }
-
-    /**
-     * The other half of the release guard (Stage 8 / POS payments) —
-     * closes the gap TicketStateMachine's docblock has flagged open since
-     * Stage 5. `balance` is kept current by recalculateBalance() on every
-     * payment and every edit that touches the amounts it derives from.
+     * The release guard (Stage 8 / POS payments) — closes the gap
+     * TicketStateMachine's docblock has flagged open since Stage 5.
+     * `balance` is kept current by recalculateBalance() on every payment
+     * and every edit that touches the amounts it derives from.
+     *
+     * There used to be an IMEI half to this guard too (a matching or
+     * overridden release-phase verification, required before release) —
+     * deliberately removed: shops found it blocked real releases whenever
+     * staff hadn't run a release-phase scan (or the device's own IMEI
+     * never passed Luhn to begin with, see ValidImei/Imei::isValid()), and
+     * the business call was that IMEI verification stays a documentation
+     * tool, not a release gate. imei-verifications/override still record
+     * chain-of-custody exactly as before; they just no longer block
+     * anything. See ImeiVerificationController, ImeiVerificationService.
      */
     private function assertBalanceSettledForRelease(RepairTicket $ticket): void
     {
@@ -162,10 +152,41 @@ class RepairTicketService
         }
     }
 
+    /**
+     * A `part` line both bills the customer (TicketLine, same as before)
+     * and — the piece flagged open since Stage 5 — consumes the part from
+     * inventory: a stock check up front (mirrors
+     * SaleService::resolveProductLine()) and a `ticket_consumption`
+     * movement via StockMovementRecorder, in the same transaction as the
+     * line itself. `line.stock_movement_id` (a column that has sat unused
+     * since the Stage 5 migration, anticipating exactly this) links the
+     * two rows. `labor` lines never touch stock — the CHECK constraint on
+     * ticket_lines already guarantees a `labor` line has no product_id.
+     * Untracked products (`track_inventory=false`) are skipped, same as
+     * POS — nothing to check or ledger for those.
+     */
     public function addLine(RepairTicket $ticket, array $data, User $actor): TicketLine
     {
         return DB::transaction(function () use ($ticket, $data, $actor) {
             $amount = round((float) $data['quantity'] * (float) $data['unit_price'], 2);
+            $quantity = (float) $data['quantity'];
+
+            $product = isset($data['product_id']) ? Product::find($data['product_id']) : null;
+
+            if ($product?->track_inventory) {
+                $level = StockLevel::withoutGlobalScopes()
+                    ->where('product_id', $product->id)
+                    ->where('branch_id', $ticket->branch_id)
+                    ->first();
+                $available = $level ? (float) $level->on_hand_qty - (float) $level->reserved_qty : 0.0;
+
+                if ($available < $quantity) {
+                    throw new ApiException(
+                        ErrorCode::InsufficientStock,
+                        "Only {$available} of \"{$product->name}\" available.",
+                    );
+                }
+            }
 
             $line = TicketLine::create([
                 'repair_ticket_id' => $ticket->id,
@@ -178,6 +199,21 @@ class RepairTicketService
                 'unit_price' => $data['unit_price'],
                 'amount' => $amount,
             ]);
+
+            if ($product?->track_inventory) {
+                $movement = $this->movements->record(
+                    productId: $product->id,
+                    branchId: $ticket->branch_id,
+                    quantity: -$quantity,
+                    unitCost: (float) ($data['unit_cost'] ?? $product->cost),
+                    movementType: 'ticket_consumption',
+                    actorId: $actor->id,
+                    referenceType: 'ticket_line',
+                    referenceId: $line->id,
+                );
+
+                $line->update(['stock_movement_id' => $movement->id]);
+            }
 
             $this->events->record(
                 $ticket,

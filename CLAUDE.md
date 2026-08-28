@@ -163,13 +163,16 @@ automatically (see `getRouteKeyName()` below).
 - `App\Support\TicketStateMachine` is the single source of truth for legal
   repair-ticket transitions (fixed graph, not configurable) —
   `assertCanTransition()` throws `InvalidStatusTransition` with the allowed
-  set in `error.details`. The graph itself doesn't encode the release
-  guards though — both live in `RepairTicketService::transition()` and are
-  now fully enforced: a matching (or overridden) release-phase IMEI
-  verification (`assertImeiClearedForRelease()`, throws `ImeiMismatch`) and
-  a settled balance (`assertBalanceSettledForRelease()`, throws
-  `PaymentSumMismatch` — reused rather than adding a new code, since an
-  unpaid balance *is* a payment-sum mismatch).
+  set in `error.details`. The graph itself doesn't encode the release guard
+  though — it lives in `RepairTicketService::transition()`: a settled
+  balance (`assertBalanceSettledForRelease()`, throws `PaymentSumMismatch`
+  — reused rather than adding a new code, since an unpaid balance *is* a
+  payment-sum mismatch). A release-phase-IMEI-verification guard
+  (`assertImeiClearedForRelease()`) was also built and then deliberately
+  removed — it blocked real releases whenever staff hadn't run a
+  release-phase scan (or a seeded device's IMEI never passed Luhn to begin
+  with); IMEI verification stays chain-of-custody documentation, not a
+  release gate. See Chain of custody below.
 - Idempotency: every write honors an optional `Idempotency-Key` header
   (`App\Http\Middleware\EnsureIdempotencyKey`) — same key + same body
   replays the cached response; same key + different body is `409
@@ -191,14 +194,25 @@ customer ticket; mislabeling it would have been worse than widening the
 enum). `reference_id` on a movement is an internal `BIGINT` and is
 deliberately not serialized (no `morphMap` yet to turn it back into the
 referenced row's ulid) — only `reference_type` (a plain string like
-`"stock_adjustment"`) ships. Real ticket-line part consumption is still
-the one stock-moving action *not* wired up (flagged since Stage 5).
+`"stock_adjustment"`) ships. Ticket-line part consumption
+(`movement_type=ticket_consumption`) is wired: `RepairTicketService::addLine()`
+checks availability and records the movement for a `part` line whose
+product has `track_inventory=true`, in the same transaction as the
+`TicketLine` row, and stamps `ticket_lines.stock_movement_id` (a column
+that had sat unused since the Stage 5 migration, anticipating exactly
+this) — `labor` lines never touch stock, guaranteed by the CHECK
+constraint that a `labor` line has no `product_id`. There's still no
+reversal path if a line is ever removed (no `destroy` route exists for
+ticket lines at all yet, so nothing currently un-consumes it).
 
 ### Chain of custody
 
 IMEI checkpoints (`imei_verifications`, no ulid — nested-only) record every
-scan regardless of match; a mismatch is logged, never rejected. The owner
-escape hatch (`.../imei-verifications/override`, `tickets.imei_override`)
+scan regardless of match; a mismatch is logged, never rejected — and, since
+the release guard was removed, unresolved verification state (missing,
+mismatched, or never overridden) no longer blocks releasing a ticket
+either. It stays a documentation/proof layer only. The owner escape hatch
+(`.../imei-verifications/override`, `tickets.imei_override`)
 is a *separate* verification row with its own `override_reason` and
 `overridden_by`, not an edit to a past one — there's no ulid to target one
 by design. Part swaps (`part_swaps`) are a documentation-only record of

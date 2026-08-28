@@ -2092,6 +2092,53 @@
                     "response": []
                 },
                 {
+                    "name": "Add Stock So The Part Line Below Can Consume It",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"branch_ulid\": \"{{owner_branch_ulid}}\",\n    \"reason_code\": \"count_variance\",\n    \"note\": \"Seeding stock so the next request has something to consume.\",\n    \"lines\": [\n        {\n            \"product_ulid\": \"{{product_ulid}}\",\n            \"quantity_delta\": 10,\n            \"unit_cost\": 900\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/stock-adjustments",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "stock-adjustments"
+                            ]
+                        },
+                        "description": "A part ticket line now consumes stock on add (RepairTicketService::addLine()), so the product created back in Catalog > Products > Create Product needs an on-hand balance in the owner's own branch before the next request can succeed."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));"
+                                ]
+                            }
+                        }
+                    ],
+                    "response": []
+                },
+                {
                     "name": "Add Ticket Line (Part)",
                     "request": {
                         "method": "POST",

@@ -72,14 +72,41 @@ it('allows a manager to override an IMEI mismatch, logged with a reason', functi
     expect($response->json('data.overridden_by.ulid'))->toBeString();
 });
 
-it('blocks releasing a ticket without a release-phase IMEI verification', function () {
+it('allows releasing a ticket with no release-phase IMEI verification at all', function () {
+    // IMEI verification is chain-of-custody documentation, not a release
+    // gate — a release guard requiring it was tried and deliberately
+    // removed (see RepairTicketService::transition()). Only a settled
+    // balance still blocks release.
     $branch = Branch::factory()->create();
     [, $token] = userWithRole('manager', $branch);
     $ticket = RepairTicket::factory()->create(['branch_id' => $branch->id, 'status' => 'ready_for_pickup']);
 
     $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/transition", [
         'to_status' => 'released',
-    ])->assertStatus(409)->assertJsonPath('error.code', 'IMEI_MISMATCH');
+    ])->assertOk()->assertJsonPath('data.status', 'released');
+});
+
+it('allows releasing a ticket after a mismatched release-phase IMEI verification, unresolved', function () {
+    // A mismatch is logged, never rejected, and no longer blocks release
+    // either — the override endpoint remains available but is no longer
+    // required to get here.
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('manager', $branch);
+    $device = CustomerDevice::factory()->create(['imei_normalized' => CUSTODY_TEST_IMEI]);
+    $ticket = RepairTicket::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_device_id' => $device->id,
+        'status' => 'ready_for_pickup',
+    ]);
+
+    $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/imei-verifications", [
+        'phase' => 'release',
+        'scanned_imei' => CUSTODY_OTHER_IMEI,
+    ])->assertStatus(201)->assertJsonPath('data.matches_expected', false);
+
+    $this->withToken($token)->postJson("/api/v1/tickets/{$ticket->ulid}/transition", [
+        'to_status' => 'released',
+    ])->assertOk()->assertJsonPath('data.status', 'released');
 });
 
 it('allows releasing a ticket after a matching release-phase IMEI verification', function () {

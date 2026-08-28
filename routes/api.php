@@ -102,9 +102,10 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/tickets/{ticket}/quotes', [TicketQuoteController::class, 'store']);
         Route::post('/tickets/{ticket}/quotes/{quote}/respond', [TicketQuoteController::class, 'respond']);
 
-        // Chain of custody — IMEI checkpoints and part swaps. release now
-        // requires a matching release-phase verification (or an owner
-        // override) — see RepairTicketService::assertImeiClearedForRelease().
+        // Chain of custody — IMEI checkpoints and part swaps. Recording and
+        // overriding a verification is documentation only — release does
+        // NOT require a matching release-phase verification (that guard
+        // was tried and removed, see RepairTicketService::transition()).
         Route::get('/tickets/{ticket}/imei-verifications', [ImeiVerificationController::class, 'index']);
         Route::post('/tickets/{ticket}/imei-verifications', [ImeiVerificationController::class, 'store']);
         Route::post('/tickets/{ticket}/imei-verifications/override', [ImeiVerificationController::class, 'override']);

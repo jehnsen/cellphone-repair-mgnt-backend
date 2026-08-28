@@ -389,7 +389,8 @@ stateDiagram-v2
     awaiting_approval --> returned_as_is : quote declined
     awaiting_parts --> in_repair : parts received
     awaiting_parts --> unrepairable : parts unobtainable
-    in_repair --> qc
+    in_repair --> ready_for_pickup : repair + QC done (qc_passed on the finding record)
+    in_repair --> qc : shops that want a separate QC checkpoint
     in_repair --> awaiting_parts : additional parts discovered
     in_repair --> unrepairable : irreparable discovered mid-repair
     qc --> ready_for_pickup : pass
@@ -403,6 +404,8 @@ stateDiagram-v2
 ```
 
 Terminal states: `released`, `returned_as_is`. `unclaimed` is semi-terminal — it only exits via `released` (device is picked up) or ages through the 30/60/90 abandonment workflow, which does not change `status` further per the brief's table list (no "disposed" status exists — see Flag 9).
+
+**Revised**: `in_repair → ready_for_pickup` is now a direct, legal edge — the frontend's board has no separate QC column (`TO CHECK` / `WAITING FOR CUSTOMER` / `WAITING FOR PARTS` / `IN REPAIR` / `READY TO CLAIM`), and QC pass/fail is now recorded as data on the ticket's finding record (`finding.qc_passed`) rather than as a required intermediate ticket status. `qc` itself stays in the status enum and the graph — a branch that still wants the extra checkpoint can route through it — just no longer mandatory.
 
 Every arrow above is a row in the state machine's allow-list, keyed `[from][] = [to,...]`. An attempt not on this list returns `422 INVALID_STATUS_TRANSITION` with `details.allowed = [...]`. `IMEI_MISMATCH` (see §5) is a **separate, additional** guard specifically in front of the `ready_for_pickup → released` edge — it is not itself a status but blocks that one transition unless overridden by `owner`.
 
