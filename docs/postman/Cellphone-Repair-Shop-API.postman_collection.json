@@ -175,6 +175,10 @@
             "key": "installment_schedule_ulid",
             "value": "",
             "type": "string"
+        },
+        {
+            "key": "message_template_ulid",
+            "value": ""
         }
     ],
     "item": [
@@ -357,6 +361,65 @@
                             ]
                         },
                         "description": "Controlled vocabularies the frontend would otherwise hardcode. Currently the repair-findings enums: root_cause, defects, resolution."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Settings",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/settings",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "settings"
+                            ]
+                        },
+                        "description": "Branch-scoped key\/value config resolved against the shop-wide defaults: each key is returned with its effective `value`, `type`, and a `source` of `branch` (this branch overrode it) or `global` (the shop default). Branch is always the caller's own. Requires `settings.manage`."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Settings (bulk)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"settings\": {\n        \"bir.display_on_receipt\": false,\n        \"notifications.sms_enabled\": true,\n        \"tickets.default_warranty_days\": {\n            \"value\": 14,\n            \"type\": \"int\"\n        },\n        \"pos.round_to_nearest_centavo\": null\n    }\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/settings",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "settings"
+                            ]
+                        },
+                        "description": "Partial bulk upsert against the caller's own branch. `settings` is a flat map of key => value; a key may also be the tagged form {\"value\": ..., \"type\": \"string|int|decimal|bool|json\"} to pin the type (otherwise it's inferred). A `null` value removes this branch's override, falling back to the shop default. Keys not in the payload are left untouched. Keys are open-ended (max 100 chars); receipt header\/footer, TIN and VAT registration live as real columns on `branches`, not here. Requires `settings.manage`."
                     },
                     "response": []
                 }
@@ -4239,6 +4302,145 @@
                             ]
                         },
                         "description": "Also records a real Payment against the underlying sale (payable_type=sale) \u2014 one unified payments ledger, not a parallel one for installments. Adjust amount to match Show Installment Plan's data.schedules[0].amount_due."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Message Templates",
+            "description": "Viber\/SMS\/email copy with `{{merge_field}}` placeholders, keyed by (channel, event_key). Config, not history \u2014 a retired template is `is_active = false`, there is no delete. All gated by `settings.manage`.",
+            "item": [
+                {
+                    "name": "List Message Templates",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/message-templates",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "message-templates"
+                            ]
+                        },
+                        "description": "Every template. Filter with `filter[channel]`, `filter[event_key]`, `filter[is_active]`. Each row includes `merge_fields` parsed out of the body for the editor UI."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Message Template",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/message-templates",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "message-templates"
+                            ]
+                        },
+                        "description": "`channel` is one of viber|sms|email. `event_key` must be a known lifecycle hook (ticket.received, ticket.ready_for_pickup, ticket.released, ticket.unclaimed_30\/60\/90, quote.sent, warranty.expiring_soon, installment.due_reminder, installment.overdue). (channel, event_key) is unique \u2014 one template per hook per channel. Captures `message_template_ulid`.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"channel\": \"sms\",\n    \"event_key\": \"ticket.ready_for_pickup\",\n    \"body\": \"Hi {{customer_name}}, your {{device_model}} (JO# {{ticket_number}}) is ready for pickup at FixMo {{branch_name}}.\",\n    \"is_active\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "if (pm.response.code === 201) {",
+                                    "    pm.collectionVariables.set('message_template_ulid', pm.response.json().data.ulid);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Show Message Template",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/message-templates\/{{message_template_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "message-templates",
+                                "{{message_template_ulid}}"
+                            ]
+                        },
+                        "description": "One template by ulid."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Message Template",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{baseUrl}}\/message-templates\/{{message_template_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "message-templates",
+                                "{{message_template_ulid}}"
+                            ]
+                        },
+                        "description": "Only `body` and `is_active` are editable \u2014 the (channel, event_key) identity is fixed once created.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"body\": \"Hi {{customer_name}}, your device (JO# {{ticket_number}}) is ready. Please bring your claim stub.\",\n    \"is_active\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
                     },
                     "response": []
                 }

@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ImeiVerificationController;
 use App\Http\Controllers\Api\V1\InstallmentPlanController;
 use App\Http\Controllers\Api\V1\InventoryController;
+use App\Http\Controllers\Api\V1\MessageTemplateController;
 use App\Http\Controllers\Api\V1\MetaController;
 use App\Http\Controllers\Api\V1\PartSwapController;
 use App\Http\Controllers\Api\V1\PublicVerificationController;
@@ -26,6 +27,7 @@ use App\Http\Controllers\Api\V1\RepairTicketController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SaleController;
 use App\Http\Controllers\Api\V1\SerializedUnitController;
+use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\ShiftController;
 use App\Http\Controllers\Api\V1\StockAdjustmentController;
 use App\Http\Controllers\Api\V1\SupplierController;
@@ -65,6 +67,12 @@ Route::prefix('v1')->group(function (): void {
         Route::apiResource('branches', BranchController::class)->except(['destroy']);
         Route::apiResource('users', UserController::class);
 
+        // Branch-scoped key/value settings with a shop-wide fallback. GET
+        // returns every key resolved (branch override wins over global);
+        // PUT is a partial bulk upsert against the caller's own branch.
+        Route::get('/settings', [SettingController::class, 'index']);
+        Route::put('/settings', [SettingController::class, 'update']);
+
         // Catalog
         Route::apiResource('device-brands', DeviceBrandController::class);
         Route::apiResource('device-models', DeviceModelController::class);
@@ -85,10 +93,6 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/tickets/{ticket}/transition', [RepairTicketController::class, 'transition']);
         Route::get('/tickets/{ticket}/events', [RepairTicketController::class, 'events']);
 
-        // Findings & root cause — one record per ticket, PUT is an upsert.
-        // A released ticket's record is closed (409); corrections go on the
-        // timeline, which is also where every edit is audited
-        // (finding_recorded events). See RepairFindingService.
         Route::get('/tickets/{ticket}/finding', [RepairFindingController::class, 'show']);
         Route::put('/tickets/{ticket}/finding', [RepairFindingController::class, 'upsert']);
 
@@ -193,6 +197,14 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/reports/dead-stock', [ReportController::class, 'deadStock']);
         Route::get('/reports/unclaimed-aging', [ReportController::class, 'unclaimedAging']);
         Route::get('/reports/commissions-payable', [ReportController::class, 'commissionsPayable']);
+
+        // Notifications & compliance — message templates only for now
+        // (the dispatcher, outbox, and unclaimed-notice job are still
+        // unbuilt). No destroy: a retired template is is_active = false.
+        Route::get('/message-templates', [MessageTemplateController::class, 'index']);
+        Route::post('/message-templates', [MessageTemplateController::class, 'store']);
+        Route::get('/message-templates/{messageTemplate}', [MessageTemplateController::class, 'show']);
+        Route::match(['put', 'patch'], '/message-templates/{messageTemplate}', [MessageTemplateController::class, 'update']);
     });
 
     // Exists only so the exception-handling test suite can assert the 500
