@@ -10,6 +10,7 @@ namespace App\Support\Api;
 enum ErrorCode: string
 {
     case Unauthenticated = 'UNAUTHENTICATED';
+    case AccountDisabled = 'ACCOUNT_DISABLED';
     case Forbidden = 'FORBIDDEN';
     case NotFound = 'NOT_FOUND';
     case MethodNotAllowed = 'METHOD_NOT_ALLOWED';
@@ -37,6 +38,7 @@ enum ErrorCode: string
     {
         return match ($this) {
             self::Unauthenticated => 401,
+            self::AccountDisabled => 403,
             self::Forbidden => 403,
             self::NotFound => 404,
             self::MethodNotAllowed => 405,
@@ -82,6 +84,7 @@ enum ErrorCode: string
     {
         return match ($this) {
             self::Unauthenticated => 'Authentication is required to access this resource.',
+            self::AccountDisabled => 'This account has been deactivated. Contact your branch manager.',
             self::Forbidden => 'You do not have permission to perform this action.',
             self::NotFound => 'The requested resource could not be found.',
             self::MethodNotAllowed => 'This HTTP method is not supported on this route.',

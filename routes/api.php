@@ -45,7 +45,10 @@ Route::prefix('v1')->group(function (): void {
     Route::get('/health', [HealthController::class, 'health']);
     Route::get('/ready', [HealthController::class, 'ready']);
 
-    Route::post('/auth/token', [TokenController::class, 'store']);
+    // Credential-guessing protection: this route is outside the auth group,
+    // so the default 'api' limiter can only key it by IP. See
+    // AppServiceProvider for the two buckets ('auth-token').
+    Route::middleware('throttle:auth-token')->post('/auth/token', [TokenController::class, 'store']);
 
     // The one unauthenticated endpoint in the API — chain-of-custody proof,
     // not a repair-management action. Its own strict limiter (10/min/IP,

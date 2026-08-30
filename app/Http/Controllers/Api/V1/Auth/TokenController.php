@@ -4,12 +4,14 @@ namespace App\Http\Controllers\Api\V1\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Providers\AppServiceProvider;
 use App\Support\Api\ApiException;
 use App\Support\Api\ApiResponse;
 use App\Support\Api\ErrorCode;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Response;
 use Symfony\Component\HttpFoundation\Response as HttpResponse;
 
@@ -29,11 +31,28 @@ class TokenController extends Controller
             'device_name' => ['required', 'string', 'max:255'],
         ]);
 
-        $user = User::where('email', $data['email'])->first();
+        // withoutGlobalScopes: BranchScope is a no-op here (nobody is
+        // authenticated yet), but this query must never become
+        // branch-dependent — a user has to be findable before we know which
+        // branch they belong to.
+        $user = User::withoutGlobalScopes()->where('email', $data['email'])->first();
 
         if (! $user || ! Hash::check($data['password'], $user->password)) {
             throw new ApiException(ErrorCode::Unauthenticated, 'These credentials do not match our records.');
         }
+
+        // Checked only after the password verifies, so this can't be used as
+        // an oracle for which emails belong to real accounts. The companion
+        // check for tokens already issued lives in
+        // AppServiceProvider::boot() — both halves are needed to actually
+        // revoke a deactivated employee's access.
+        if (! $user->is_active) {
+            throw new ApiException(ErrorCode::AccountDisabled);
+        }
+
+        // Correct credentials — release this email+IP's failed-attempt
+        // budget so ordinary typos don't lock a cashier out mid-shift.
+        RateLimiter::clear(AppServiceProvider::loginThrottleCacheKey($request));
 
         $token = $user->createToken($data['device_name']);
 
