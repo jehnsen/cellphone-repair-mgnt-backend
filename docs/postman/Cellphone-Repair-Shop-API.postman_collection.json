@@ -1723,6 +1723,65 @@
                         }
                     },
                     "response": []
+                },
+                {
+                    "name": "Show Store Credit",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}\/store-credit",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}",
+                                "store-credit"
+                            ]
+                        },
+                        "description": "Shop-wide store-credit balance + the most recent ledger entries (newest first). Credit lands here from store_credit refunds, store_credit payments (as debits), and the manual adjustment below. Needs customers.view."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Adjust Store Credit",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"direction\": \"credit\",\n    \"amount\": 500,\n    \"reason\": \"goodwill gesture\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/customers\/{{customer_ulid}}\/store-credit\/adjust",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "customers",
+                                "{{customer_ulid}}",
+                                "store-credit",
+                                "adjust"
+                            ]
+                        },
+                        "description": "Manager\/owner only (store_credit.manage). direction=credit grants, direction=debit corrects\/claws back — 422 INSUFFICIENT_STORE_CREDIT if a debit exceeds the balance. Refund- and payment-driven movements go through the sales endpoints, not here."
+                    },
+                    "response": []
                 }
             ]
         },
@@ -3704,7 +3763,45 @@
                                 "payments"
                             ]
                         },
-                        "description": "Call more than once to split a payment across methods (e.g. part cash, part gcash) \u2014 409 PAYMENT_SUM_MISMATCH once the sum would exceed the total. tendered\/change_given only apply to cash."
+                        "description": "Call more than once to split a payment across methods (e.g. part cash, part gcash) \u2014 409 PAYMENT_SUM_MISMATCH once the sum would exceed the total. tendered\/change_given only apply to cash. method=store_credit draws down the sale customer's store-credit balance (422 INSUFFICIENT_STORE_CREDIT if short; the sale must have a customer). method=trade_in \u2014 see Trade-In Payment below."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Trade-In Payment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"method\": \"trade_in\",\n    \"amount\": 3000,\n    \"acquisition_ulid\": \"{{acquisition_ulid}}\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/sales\/{{sale_ulid}}\/payments",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sales",
+                                "{{sale_ulid}}",
+                                "payments"
+                            ]
+                        },
+                        "description": "Applies a customer's traded-in phone as tender. Run the Buy-back \/ refurb folder's Create Acquisition \u2192 IMEI Check \u2192 Complete Acquisition first (that sets acquisition_ulid and creates the serialized unit). offered_price caps amount; the acquisition can back only one sale \u2014 409 TRADE_IN_NOT_AVAILABLE if it's not completed, is at another branch, or was already used. trade_in never touches expected_cash."
                     },
                     "response": []
                 },
@@ -3724,7 +3821,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"reason_code\": \"customer_changed_mind\",\n    \"lines\": [\n        {\n            \"line_index\": 0,\n            \"quantity\": 1,\n            \"restock_behavior\": \"restock\"\n        }\n    ]\n}",
+                            "raw": "{\n    \"reason_code\": \"customer_changed_mind\",\n    \"refund_method\": \"cash\",\n    \"lines\": [\n        {\n            \"line_index\": 0,\n            \"quantity\": 1,\n            \"restock_behavior\": \"restock\"\n        }\n    ]\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -3742,7 +3839,7 @@
                                 "refunds"
                             ]
                         },
-                        "description": "line_index refers to the line's position in Show Sale's data.lines array (sale_lines has no ulid of its own). restock puts it back on the shelf (or flips a serialized unit back to in_stock); no_restock\/write_off both leave stock exactly as the original sale left it."
+                        "description": "line_index refers to the line's position in Show Sale's data.lines array (sale_lines has no ulid of its own). restock puts it back on the shelf (or flips a serialized unit back to in_stock); no_restock\/write_off both leave stock exactly as the original sale left it. refund_method: cash writes a drawer-out cash movement against your open shift (so Close Shift's expected_cash drops by the refund — needs an open shift); store_credit issues the total into the customer's store-credit ledger (the sale must have a customer); gcash\/maya\/card\/bank_transfer are reversed out-of-band."
                     },
                     "response": []
                 },

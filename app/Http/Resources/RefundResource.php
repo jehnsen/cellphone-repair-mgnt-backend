@@ -13,6 +13,8 @@ class RefundResource extends JsonResource
         return [
             'ulid' => $this->ulid,
             'reason_code' => $this->reason_code,
+            'refund_method' => $this->refund_method,
+            'total_amount' => $this->total_amount,
             'processor' => new UserResource($this->whenLoaded('processor')),
             'lines' => RefundLineResource::collection($this->whenLoaded('lines')),
             'created_at' => $this->created_at?->toIso8601String(),

@@ -22,10 +22,12 @@ enum ErrorCode: string
     case IdempotencyConflict = 'IDEMPOTENCY_CONFLICT';
     case AcquisitionImeiFlagged = 'ACQUISITION_IMEI_FLAGGED';
     case PaymentSumMismatch = 'PAYMENT_SUM_MISMATCH';
+    case TradeInNotAvailable = 'TRADE_IN_NOT_AVAILABLE';
     case SyncConflict = 'SYNC_CONFLICT';
 
     case ValidationFailed = 'VALIDATION_FAILED';
     case InsufficientStock = 'INSUFFICIENT_STOCK';
+    case InsufficientStoreCredit = 'INSUFFICIENT_STORE_CREDIT';
     case InvalidImei = 'INVALID_IMEI';
     case InvalidPhMobile = 'INVALID_PH_MOBILE';
 
@@ -49,9 +51,11 @@ enum ErrorCode: string
             self::IdempotencyConflict,
             self::AcquisitionImeiFlagged,
             self::PaymentSumMismatch,
+            self::TradeInNotAvailable,
             self::SyncConflict => 409,
             self::ValidationFailed,
             self::InsufficientStock,
+            self::InsufficientStoreCredit,
             self::InvalidImei,
             self::InvalidPhMobile => 422,
             self::RateLimited => 429,
@@ -95,9 +99,11 @@ enum ErrorCode: string
             self::IdempotencyConflict => 'This Idempotency-Key was already used with a different request body.',
             self::AcquisitionImeiFlagged => 'This acquisition cannot be completed while its IMEI check is flagged.',
             self::PaymentSumMismatch => 'The sum of payments does not match the total due.',
+            self::TradeInNotAvailable => 'This acquisition cannot be applied as a trade-in payment.',
             self::SyncConflict => 'This offline operation conflicts with server state and needs manual resolution.',
             self::ValidationFailed => 'The given data was invalid.',
             self::InsufficientStock => 'There is not enough stock on hand for this operation.',
+            self::InsufficientStoreCredit => 'The customer does not have enough store credit for this operation.',
             self::InvalidImei => 'The given IMEI is not valid.',
             self::InvalidPhMobile => 'The given mobile number is not a valid Philippine mobile number.',
             self::RateLimited => 'Too many requests. Please slow down and try again shortly.',

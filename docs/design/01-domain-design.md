@@ -66,6 +66,8 @@ Conventions used throughout:
 
 **personal_access_tokens** (Sanctum, package table) — `name` used as device name, `abilities` JSON mirrors permissions.
 
+Permission set additions since the original §2.1 list: `store_credit.manage` (owner + manager) gates the manual store-credit adjustment endpoint; redeeming store credit as a payment only needs `sales.create`.
+
 ---
 
 ### 2.2 Catalog
@@ -196,13 +198,23 @@ Index `(branch_id, created_at)` per brief.
 `sale_id FK, sale_line_id FK NULLABLE, type ENUM(...), value DECIMAL(14,2), scope ENUM(line,sale), id_type VARCHAR(30) NULLABLE, id_number VARCHAR(40) NULLABLE, cardholder_name VARCHAR(120) NULLABLE, signature_ref VARCHAR(255) NULLABLE, created_at`
 
 **payments** — append-only, ulid ✓
-`payable_type ENUM(sale,repair_ticket), payable_id BIGINT UNSIGNED, method ENUM(...), amount DECIMAL(14,2), reference_number VARCHAR(60) NULLABLE, tendered DECIMAL(14,2) NULLABLE, change_given DECIMAL(14,2) NULLABLE, shift_id FK NULLABLE, actor_id FK→users, created_at`
+`payable_type ENUM(sale,repair_ticket), payable_id BIGINT UNSIGNED, method ENUM(...), amount DECIMAL(14,2), reference_number VARCHAR(60) NULLABLE, tendered DECIMAL(14,2) NULLABLE, change_given DECIMAL(14,2) NULLABLE, shift_id FK NULLABLE, acquisition_id FK→acquisitions NULLABLE, actor_id FK→users, created_at`
+`acquisition_id` is set only for `method = trade_in` — the completed buy-back whose `offered_price` caps the credit; a given acquisition backs at most one trade-in payment (enforced in PaymentRecorder, not a partial unique index). `method = store_credit` debits the payer's store-credit ledger (below) in the same transaction and requires the sale/ticket to name a customer. Neither method touches `expected_cash` (ShiftService counts only `method = cash`).
 
 **refunds** — ulid ✓
-`sale_id FK RESTRICT, reason_code VARCHAR(40), processed_by FK→users, created_at, updated_at`
+`sale_id FK RESTRICT, reason_code VARCHAR(40), refund_method ENUM(cash,gcash,maya,card,bank_transfer,store_credit) DEFAULT 'cash', total_amount DECIMAL(14,2) DEFAULT 0 (CHECK ≥ 0, = sum of refund_lines.amount), processed_by FK→users, created_at, updated_at`
+`refund_method = cash` writes a `cash_movements` (direction=out) row against the processor's open shift — this is what makes a cash refund reduce `expected_cash` at shift close; it therefore requires an open shift. `store_credit` issues `total_amount` into the customer's store-credit ledger (sale must name a customer). The electronic methods are reversed out-of-band by the processor and have no drawer/ledger effect here.
 
 **refund_lines** — no ulid
 `refund_id FK, sale_line_id FK, quantity DECIMAL(14,2), amount DECIMAL(14,2), restock_behavior ENUM(...)`
+
+**store_credit_accounts** — ulid ✓
+`customer_id FK UNIQUE, balance DECIMAL(14,2) DEFAULT 0 (CHECK ≥ 0, cached running total maintained by StoreCreditService), created_at, updated_at`
+Shop-wide: one account per customer, redeemable at any branch — no `branch_id` (the customer carries branch context).
+
+**store_credit_entries** — append-only, ulid ✓
+`store_credit_account_id FK, direction ENUM(credit,debit), amount DECIMAL(14,2) (CHECK > 0), balance_after DECIMAL(14,2), reason VARCHAR(60), reference_type VARCHAR(40) NULLABLE, reference_id BIGINT UNSIGNED NULLABLE, actor_id FK→users, created_at`
+Written by: `store_credit` refunds (`reason = refund`), `store_credit` payments (`reason = sale_payment`), manual manager adjustment (`reason = <free text>`, `reference_type = manual_adjustment`). Index `(store_credit_account_id, created_at)`.
 
 **shifts** — ulid ✓
 `branch_id FK, cashier_id FK→users, opened_at DATETIME, opening_float DECIMAL(14,2), closed_at DATETIME NULLABLE, counted_cash DECIMAL(14,2) NULLABLE, expected_cash DECIMAL(14,2) NULLABLE, variance DECIMAL(14,2) NULLABLE, notes TEXT, created_at, updated_at`
@@ -426,9 +438,11 @@ Every arrow above is a row in the state machine's allow-list, keyed `[from][] = 
 | 409 | `IDEMPOTENCY_CONFLICT` | Same `Idempotency-Key` replayed with a **different** request body |
 | 409 | `ACQUISITION_IMEI_FLAGGED` | Buy-back completion blocked while `imei_check_result = flagged` |
 | 409 | `PAYMENT_SUM_MISMATCH` | Split payments don't sum to the total |
+| 409 | `TRADE_IN_NOT_AVAILABLE` | `method = trade_in` payment against an acquisition that is not completed, is at another branch, was already applied, or whose `offered_price` is below the amount |
 | 409 | `SYNC_CONFLICT` | Offline batch op conflicts (e.g., same serialized unit sold twice offline) |
 | 422 | `VALIDATION_FAILED` | Form Request failure; `details[]` is per-field |
 | 422 | `INSUFFICIENT_STOCK` | Non-serialized stock would go negative on a path that doesn't allow it (POS sales are allowed to go negative per the sync policy — this code is for paths that must not, e.g. a plain stock adjustment reversal) |
+| 422 | `INSUFFICIENT_STORE_CREDIT` | `method = store_credit` payment, or a manual store-credit debit, exceeds the customer's balance |
 | 422 | `INVALID_IMEI` | Fails 15-digit/Luhn check |
 | 422 | `INVALID_PH_MOBILE` | Fails `ph_mobile` rule |
 | 429 | `RATE_LIMITED` | Limiter exceeded (public verify endpoint has its own strict limiter) |
@@ -503,8 +517,11 @@ Sales / POS
 - `GET|POST /api/v1/sales`, `GET /api/v1/sales/{ulid}`
 - `POST /api/v1/sales/{ulid}/void`
 - `POST /api/v1/sales/{ulid}/payments`
-- `POST /api/v1/sales/{ulid}/refunds`
+- `POST /api/v1/sales/{ulid}/refunds` — `refund_method` chosen per refund; `cash` writes a drawer-out `cash_movements` row (needs an open shift), `store_credit` issues into the customer's ledger
 - `GET /api/v1/discounts/calculate` — preview calculator (senior/PWD/etc.) before committing a sale
+- `GET /api/v1/customers/{ulid}/store-credit` — shop-wide balance + append-only ledger
+- `POST /api/v1/customers/{ulid}/store-credit/adjust` — manager-only manual `credit`/`debit` (`store_credit.manage`)
+- Trade-in: `POST /api/v1/sales/{ulid}/payments` with `method = trade_in` and `acquisition_ulid` (a completed buy-back; `offered_price` caps the credit)
 
 Buy-back / refurb
 - `GET|POST /api/v1/acquisitions`, `GET|PATCH /api/v1/acquisitions/{ulid}`

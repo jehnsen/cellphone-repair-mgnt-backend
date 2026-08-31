@@ -5,19 +5,18 @@ namespace App\Http\Resources;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\Payment */
-class PaymentResource extends JsonResource
+/** @mixin \App\Models\StoreCreditEntry */
+class StoreCreditEntryResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
         return [
             'ulid' => $this->ulid,
-            'method' => $this->method,
+            'direction' => $this->direction,
             'amount' => $this->amount,
-            'reference_number' => $this->reference_number,
-            'tendered' => $this->tendered,
-            'change_given' => $this->change_given,
-            'acquisition_ulid' => $this->whenLoaded('acquisition', fn () => $this->acquisition?->ulid),
+            'balance_after' => $this->balance_after,
+            'reason' => $this->reason,
+            'reference_type' => $this->reference_type,
             'actor' => new UserResource($this->whenLoaded('actor')),
             'created_at' => $this->created_at?->toIso8601String(),
         ];

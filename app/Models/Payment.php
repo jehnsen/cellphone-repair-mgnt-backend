@@ -12,7 +12,7 @@ use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
 
 /** Append-only — a correction is a new, signed, reversing row, never an update. */
-#[Fillable(['payable_type', 'payable_id', 'method', 'amount', 'reference_number', 'tendered', 'change_given', 'shift_id', 'actor_id'])]
+#[Fillable(['payable_type', 'payable_id', 'method', 'amount', 'reference_number', 'tendered', 'change_given', 'shift_id', 'acquisition_id', 'actor_id'])]
 class Payment extends Model
 {
     /** @use HasFactory<PaymentFactory> */
@@ -39,6 +39,12 @@ class Payment extends Model
     public function shift(): BelongsTo
     {
         return $this->belongsTo(Shift::class);
+    }
+
+    /** Set only when method = trade_in — the buy-back that backed this payment. */
+    public function acquisition(): BelongsTo
+    {
+        return $this->belongsTo(Acquisition::class);
     }
 
     public function actor(): BelongsTo

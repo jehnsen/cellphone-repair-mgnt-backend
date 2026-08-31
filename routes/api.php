@@ -30,6 +30,7 @@ use App\Http\Controllers\Api\V1\SerializedUnitController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\ShiftController;
 use App\Http\Controllers\Api\V1\StockAdjustmentController;
+use App\Http\Controllers\Api\V1\StoreCreditController;
 use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\TicketLineController;
 use App\Http\Controllers\Api\V1\TicketPaymentController;
@@ -88,6 +89,12 @@ Route::prefix('v1')->group(function (): void {
         Route::apiResource('customers.devices', CustomerDeviceController::class)
             ->parameters(['devices' => 'device']);
         Route::get('/devices/by-imei/{imei}', [CustomerDeviceController::class, 'historyByImei']);
+
+        // Shop-wide store credit — balance + append-only ledger, plus a
+        // manager-only manual adjustment. Refund- and payment-driven
+        // movements flow through the sales endpoints, not here.
+        Route::get('/customers/{customer}/store-credit', [StoreCreditController::class, 'show']);
+        Route::post('/customers/{customer}/store-credit/adjust', [StoreCreditController::class, 'adjust']);
 
         // Repair tickets — Stage 5: state machine, timeline, photos, quotes.
         Route::apiResource('tickets', RepairTicketController::class)

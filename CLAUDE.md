@@ -245,6 +245,29 @@ has no column linking a line back to a specific ticket, so it's unused.
 + `method=cash`) plus cash movements against the counted drawer — gcash/
 card never touch `expected_cash`.
 
+Two payment methods carry settlement beyond the `payments` row, both
+centralized in `PaymentRecorder::record()` since it's the one place that
+writes payments: `store_credit` debits the payer's shop-wide store-credit
+ledger (`StoreCreditService`, requires the sale/ticket to name a customer,
+throws `InsufficientStoreCredit`); `trade_in` links a completed buy-back
+`Acquisition` via `payments.acquisition_id` whose `offered_price` caps the
+amount and which can back only one trade-in payment (`TradeInNotAvailable`
+otherwise). Neither hits `expected_cash`. A refund now records
+`refund_method` + `total_amount` (`RefundService::settle()`): `cash` writes
+a drawer-out `cash_movements` row against the processor's open shift (so
+the refund actually reduces `expected_cash` — needs an open shift),
+`store_credit` issues into the customer's ledger, the electronic methods
+are reversed out-of-band.
+
+**Store credit** is shop-wide — one `store_credit_accounts` row per
+customer (no `branch_id`), an append-only `store_credit_entries` ledger
+with `balance_after` stamped per row, and a cached `balance` maintained by
+`StoreCreditService` under `lockForUpdate` (same shape as
+`StockMovementRecorder`/`Sequence`). `GET /customers/{customer}/store-credit`
+returns balance + recent ledger; `POST .../store-credit/adjust` is a
+manager-only manual `credit`/`debit` (`store_credit.manage`, owner +
+manager).
+
 ### Purchase orders, refunds, buy-back/refurb, installments
 
 Two more instances of "no ulid on this nested table, so how does the client

@@ -482,8 +482,18 @@ could ever produce a token to try it with.
   and `service` (no stock effect). `sale_lines.sellable_type=ticket_balance`
   from the schema is **not** implemented — see below. `void()` reverses
   both: a `return_in` stock movement for products, and the serialized
-  unit's status back to `in_stock`; a full refund flow with per-line
-  restocking choices is a separate, not-yet-built action.
+  unit's status back to `in_stock`. The per-line refund flow (with
+  restocking choices and settlement) is `POST /sales/{sale}/refunds` — see
+  below.
+- **Store credit and trade-in payments** — a `store_credit` payment
+  (`POST /sales/{sale}/payments` or the ticket-payment endpoint) draws down
+  the customer's shop-wide store-credit balance
+  (`GET /customers/{customer}/store-credit`, append-only ledger; managers
+  grant/correct via `POST .../store-credit/adjust`, `store_credit.manage`).
+  A `trade_in` payment carries `acquisition_ulid` — a completed buy-back
+  whose appraised `offered_price` caps the credit and which can back only
+  one sale (`409 TRADE_IN_NOT_AVAILABLE` otherwise). Neither method affects
+  `expected_cash`. Both settlements live in `PaymentRecorder`.
 - **VAT and discounts** (`App\Support\SaleCalculator`, unit-testable
   without a database) — VAT-inclusive pricing, `vat = gross / 1.12 * 0.12`
   (the same formula `ShiftAndSalesSeeder` already used for demo data,
@@ -563,7 +573,14 @@ The remaining bounded contexts from the design doc, in one pass:
   original sale left it — the only question restock_behavior answers is
   whether the item can go back on the shelf, not whether it "un-happens".
   The sale's status becomes `partially_refunded` or `refunded` once every
-  line is fully covered.
+  line is fully covered. Every refund names a `refund_method` and stamps
+  `total_amount` (the sum of its lines): `cash` writes a drawer-out
+  `cash_movements` row against the processor's open shift — this is what
+  makes a cash refund lower `expected_cash` at close, and it needs an open
+  shift (`409 SHIFT_NOT_OPEN`); `store_credit` issues the total into the
+  customer's ledger (the sale must name a customer); gcash/maya/card/
+  bank_transfer are reversed out-of-band and have no drawer effect here
+  (`RefundService::settle()`).
 - **Buy-back / refurb** (`GET|POST /acquisitions`,
   `POST .../imei-check`, `POST .../complete`, `GET|POST /refurb-jobs`,
   `POST .../lines`, `POST .../complete`) — `Acquisition` has no

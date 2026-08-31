@@ -20,6 +20,9 @@ class StoreTicketPaymentRequest extends FormRequest
             'amount' => ['required', 'numeric', 'min:0.01'],
             'reference_number' => ['nullable', 'string', 'max:60', 'required_if:method,gcash,maya,card,bank_transfer'],
             'tendered' => ['nullable', 'numeric', 'min:0'],
+            // method=trade_in: the completed buy-back whose offered_price is
+            // the credit being applied (see PaymentRecorder).
+            'acquisition_ulid' => ['nullable', 'string', 'size:26', 'required_if:method,trade_in'],
         ];
     }
 }

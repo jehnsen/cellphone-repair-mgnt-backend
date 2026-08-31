@@ -10,6 +10,7 @@ use App\Http\Requests\Api\V1\Sale\VoidSaleRequest;
 use App\Http\Resources\PaymentResource;
 use App\Http\Resources\RefundResource;
 use App\Http\Resources\SaleResource;
+use App\Models\Acquisition;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Sale;
@@ -77,18 +78,25 @@ class SaleController extends Controller
     public function addPayment(StoreSalePaymentRequest $request, Sale $sale): JsonResponse
     {
         return DB::transaction(function () use ($request, $sale) {
+            $data = $request->validated();
+
+            if (isset($data['acquisition_ulid'])) {
+                $data['acquisition_id'] = Acquisition::idFromUlid($data['acquisition_ulid']);
+            }
+            unset($data['acquisition_ulid']);
+
             $alreadyPaid = (float) $sale->payments()->sum('amount');
             $payment = $this->payments->record(
                 'sale',
                 $sale->id,
                 (float) $sale->total,
                 $alreadyPaid,
-                $request->validated(),
+                $data,
                 $request->user(),
                 $sale->shift,
             );
 
-            return (new PaymentResource($payment->load('actor')))->response()->setStatusCode(201);
+            return (new PaymentResource($payment->load('actor', 'acquisition')))->response()->setStatusCode(201);
         });
     }
 

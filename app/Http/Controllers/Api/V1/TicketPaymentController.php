@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\RepairTicket\StoreTicketPaymentRequest;
 use App\Http\Resources\PaymentResource;
 use App\Http\Resources\RepairTicketResource;
+use App\Models\Acquisition;
 use App\Models\RepairTicket;
 use App\Repositories\Contracts\ShiftRepositoryInterface;
 use App\Services\PaymentRecorder;
@@ -40,6 +41,13 @@ class TicketPaymentController extends Controller
     public function store(StoreTicketPaymentRequest $request, RepairTicket $ticket): JsonResponse
     {
         return DB::transaction(function () use ($request, $ticket) {
+            $data = $request->validated();
+
+            if (isset($data['acquisition_ulid'])) {
+                $data['acquisition_id'] = Acquisition::idFromUlid($data['acquisition_ulid']);
+            }
+            unset($data['acquisition_ulid']);
+
             $alreadyPaid = (float) $ticket->payments()->sum('amount') + (float) $ticket->downpayment;
             $base = (float) ($ticket->approved_amount ?? $ticket->estimated_cost ?? 0);
             $shift = $this->shifts->findOpenFor($request->user());
@@ -49,7 +57,7 @@ class TicketPaymentController extends Controller
                 $ticket->id,
                 $base,
                 $alreadyPaid,
-                $request->validated(),
+                $data,
                 $request->user(),
                 $shift,
             );

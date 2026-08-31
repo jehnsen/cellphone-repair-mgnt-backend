@@ -14,6 +14,8 @@ class RefundFactory extends Factory
         return [
             'sale_id' => Sale::factory(),
             'reason_code' => fake()->randomElement(['defective', 'wrong_item', 'customer_changed_mind']),
+            'refund_method' => 'cash',
+            'total_amount' => 0,
             'processed_by' => User::factory(),
         ];
     }

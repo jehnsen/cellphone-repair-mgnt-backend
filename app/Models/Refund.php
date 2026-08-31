@@ -10,11 +10,18 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-#[Fillable(['sale_id', 'reason_code', 'processed_by'])]
+#[Fillable(['sale_id', 'reason_code', 'refund_method', 'total_amount', 'processed_by'])]
 class Refund extends Model
 {
     /** @use HasFactory<RefundFactory> */
     use HasFactory, HasUlid;
+
+    public const METHODS = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'store_credit'];
+
+    protected function casts(): array
+    {
+        return ['total_amount' => 'decimal:2'];
+    }
 
     public function sale(): BelongsTo
     {

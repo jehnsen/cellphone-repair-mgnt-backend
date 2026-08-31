@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\CashMovement;
+use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Refund;
 use App\Models\RefundLine;
@@ -9,6 +11,7 @@ use App\Models\Sale;
 use App\Models\SaleLine;
 use App\Models\SerializedUnit;
 use App\Models\User;
+use App\Repositories\Contracts\ShiftRepositoryInterface;
 use App\Support\Api\ApiException;
 use App\Support\Api\ErrorCode;
 use Illuminate\Support\Collection;
@@ -22,7 +25,11 @@ use Illuminate\Support\Facades\DB;
  */
 class RefundService
 {
-    public function __construct(private readonly StockMovementRecorder $movements) {}
+    public function __construct(
+        private readonly StockMovementRecorder $movements,
+        private readonly ShiftRepositoryInterface $shifts,
+        private readonly StoreCreditService $storeCredit,
+    ) {}
 
     public function create(Sale $sale, array $data, User $actor): Refund
     {
@@ -36,8 +43,12 @@ class RefundService
             $refund = Refund::create([
                 'sale_id' => $sale->id,
                 'reason_code' => $data['reason_code'],
+                'refund_method' => $data['refund_method'],
+                'total_amount' => 0,
                 'processed_by' => $actor->id,
             ]);
+
+            $refundTotal = 0.0;
 
             foreach ($data['lines'] as $lineData) {
                 /** @var SaleLine $saleLine */
@@ -51,6 +62,7 @@ class RefundService
 
                 $unitAmount = (float) $saleLine->amount / (float) $saleLine->quantity;
                 $amount = round($unitAmount * (float) $lineData['quantity'], 2);
+                $refundTotal = round($refundTotal + $amount, 2);
 
                 RefundLine::create([
                     'refund_id' => $refund->id,
@@ -65,10 +77,60 @@ class RefundService
                 }
             }
 
+            $refund->update(['total_amount' => $refundTotal]);
+            $this->settle($sale, $refund, $data['refund_method'], $refundTotal, $actor);
             $this->syncSaleStatus($sale, $saleLines);
 
             return $refund->fresh(['lines.saleLine', 'processor']);
         });
+    }
+
+    /**
+     * Puts the money back by the chosen method:
+     *  - `cash` — a `cash_movements` (out) row against the cashier's open
+     *    shift, which is what ShiftService::close() subtracts from
+     *    `expected_cash`. Requires an open shift.
+     *  - `store_credit` — issued into the customer's store-credit ledger;
+     *    the sale must name a customer.
+     *  - gcash/maya/card/bank_transfer — reversed out-of-band by the
+     *    processor; no drawer or ledger effect here.
+     */
+    private function settle(Sale $sale, Refund $refund, string $method, float $total, User $actor): void
+    {
+        if ($total <= 0) {
+            return;
+        }
+
+        if ($method === 'cash') {
+            $shift = $this->shifts->findOpenFor($actor);
+
+            if ($shift === null) {
+                throw new ApiException(ErrorCode::ShiftNotOpen, 'A cash refund requires an open shift.');
+            }
+
+            CashMovement::create([
+                'shift_id' => $shift->id,
+                'direction' => 'out',
+                'amount' => $total,
+                'reason' => "Refund {$refund->ulid} on sale {$sale->sale_number}",
+                'actor_id' => $actor->id,
+            ]);
+
+            return;
+        }
+
+        if ($method === 'store_credit') {
+            if ($sale->customer_id === null) {
+                throw new ApiException(
+                    ErrorCode::ValidationFailed,
+                    'A store-credit refund requires the sale to be linked to a customer.',
+                );
+            }
+
+            /** @var Customer $customer */
+            $customer = Customer::withoutGlobalScopes()->findOrFail($sale->customer_id);
+            $this->storeCredit->issue($customer, $total, 'refund', $actor, 'refund', $refund->id);
+        }
     }
 
     /**

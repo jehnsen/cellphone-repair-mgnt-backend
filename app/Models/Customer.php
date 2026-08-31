@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Attributes\ScopedBy;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable(['branch_id', 'name', 'mobile', 'email', 'address', 'notes', 'is_blacklisted', 'blacklist_reason'])]
@@ -38,5 +39,10 @@ class Customer extends Model
     public function sales(): HasMany
     {
         return $this->hasMany(Sale::class);
+    }
+
+    public function storeCreditAccount(): HasOne
+    {
+        return $this->hasOne(StoreCreditAccount::class);
     }
 }
