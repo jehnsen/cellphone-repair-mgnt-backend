@@ -25,6 +25,17 @@ class User extends Authenticatable
     /** @use HasFactory<UserFactory> */
     use BelongsToBranch, HasApiTokens, HasFactory, HasRoles, HasUlid, Notifiable, SoftDeletes;
 
+    /**
+     * Mirrors the column default so a user created without an explicit
+     * is_active is active in memory too — the DB default alone leaves the
+     * freshly-created model's attribute null until it's re-read, so the
+     * 201 from POST /users reported `is_active: null` on an account that
+     * was in fact active.
+     */
+    protected $attributes = [
+        'is_active' => true,
+    ];
+
     protected function casts(): array
     {
         return [

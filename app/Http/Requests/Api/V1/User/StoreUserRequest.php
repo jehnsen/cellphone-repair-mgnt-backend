@@ -11,7 +11,18 @@ class StoreUserRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('create', User::class);
+        if (! $this->user()->can('create', User::class)) {
+            return false;
+        }
+
+        // An account can never be granted a role its creator couldn't
+        // hold. Checked here rather than as a validation rule so it comes
+        // back 403, not 422 — it's an authorization failure, not bad input.
+        // Non-scalar input is normalized to null; the `role` rules below
+        // are what reject it, with a 422.
+        $role = $this->input('role');
+
+        return $this->user()->can('assignRole', [User::class, is_string($role) ? $role : null]);
     }
 
     public function rules(): array

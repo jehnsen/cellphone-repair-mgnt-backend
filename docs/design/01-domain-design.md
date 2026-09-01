@@ -466,7 +466,13 @@ Auth
 
 Identity & shop
 - `GET|POST /api/v1/branches`, `GET|PATCH /api/v1/branches/{ulid}`
-- `GET|POST /api/v1/users`, `GET|PATCH|DELETE /api/v1/users/{ulid}`
+- `GET|POST /api/v1/users`, `GET|PATCH|DELETE /api/v1/users/{ulid}` —
+  creating staff (a cashier included) needs `users.manage`, owner-only
+  today; there is no separate per-role endpoint. A role may never be
+  granted to an account whose creator couldn't hold it
+  (`UserPolicy::assignRole()` — only an owner mints an owner), which is a
+  403, not a 422. Administering another branch's staff needs
+  `?branch=all` / `?branch={ulid}` as below.
 - `GET|POST /api/v1/roles`, `GET|POST /api/v1/permissions` (spatie-backed, thin wrapper)
 - `GET|PUT /api/v1/settings` (branch-scoped, key/value bulk)
 

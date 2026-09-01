@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Support\Api\ApiException;
 use App\Support\Api\ErrorCode;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Resolves which branch(es) the current request may see, and is the one
@@ -44,7 +45,12 @@ class BranchContext
 
     public function resolve(Request $request): void
     {
-        $user = $request->user();
+        // This runs ahead of auth:sanctum (see bootstrap/app.php), so the
+        // user isn't set on the request yet — ask the guard directly.
+        // Sanctum resolves the bearer token without authenticating the
+        // request, and returns null on a bad or absent token, which is
+        // exactly the unauthenticated case handled below.
+        $user = $request->user() ?? auth('sanctum')->user();
 
         // Unauthenticated (console, seeders, the public verify route):
         // unrestricted, same as BranchScope has always behaved.
@@ -102,7 +108,9 @@ class BranchContext
     public function branchId(): ?int
     {
         if (! $this->resolved) {
-            return auth()->check() ? auth()->user()?->branch_id : null;
+            $user = Auth::user();
+
+            return $user?->branch_id;
         }
 
         return $this->branchId;

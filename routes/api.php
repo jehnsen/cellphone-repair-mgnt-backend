@@ -40,7 +40,6 @@ use App\Http\Controllers\Api\V1\TicketPaymentController;
 use App\Http\Controllers\Api\V1\TicketPhotoController;
 use App\Http\Controllers\Api\V1\TicketQuoteController;
 use App\Http\Controllers\Api\V1\UserController;
-use App\Http\Middleware\ResolveBranchContext;
 use Illuminate\Support\Facades\Route;
 
 // Everything lives under /api/v1 (see docs/design/01-domain-design.md §6).
@@ -60,10 +59,10 @@ Route::prefix('v1')->group(function (): void {
     // see AppServiceProvider), not auth, is what keeps it from being scraped.
     Route::middleware('throttle:public-verify')->get('/public/verify/{token}', [PublicVerificationController::class, 'show']);
 
-    // ResolveBranchContext must run *after* auth — it reads the resolved
-    // user to decide this request's branch scope (own branch by default;
-    // ?branch=all / ?branch={ulid} for an owner holding branches.view_all).
-    Route::middleware(['auth:sanctum', ResolveBranchContext::class])->group(function (): void {
+    // ResolveBranchContext is registered on the whole 'api' group in
+    // bootstrap/app.php, ahead of SubstituteBindings — see the comment
+    // there for why it can't live on this group instead.
+    Route::middleware('auth:sanctum')->group(function (): void {
         Route::get('/auth/tokens', [TokenController::class, 'index']);
         Route::delete('/auth/tokens/{tokenId}', [TokenController::class, 'destroy'])
             ->whereNumber('tokenId');

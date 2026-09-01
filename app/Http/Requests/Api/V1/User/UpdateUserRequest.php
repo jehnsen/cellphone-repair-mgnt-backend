@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api\V1\User;
 
+use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -9,7 +10,20 @@ class UpdateUserRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()->can('update', $this->route('user'));
+        if (! $this->user()->can('update', $this->route('user'))) {
+            return false;
+        }
+
+        // Promoting an existing account is the same escalation as creating
+        // one outright, so it goes through the same gate. Absent `role`
+        // means this update isn't touching the role at all.
+        if (! $this->has('role')) {
+            return true;
+        }
+
+        $role = $this->input('role');
+
+        return $this->user()->can('assignRole', [User::class, is_string($role) ? $role : null]);
     }
 
     public function rules(): array

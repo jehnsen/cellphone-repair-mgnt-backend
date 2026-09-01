@@ -123,11 +123,20 @@ automatically (see `getRouteKeyName()` below).
   response changes unless a client explicitly asks: `?branch=all` or
   `?branch={ulid}` widens or switches scope, and requires the
   `branches.view_all` permission (owner only) — anyone else asking gets
-  403, never a silently narrowed result. `ResolveBranchContext` middleware
-  runs it once per request, inside the `auth:sanctum` group (it needs the
-  resolved user), and `BranchContext` is a container singleton — a service
-  that queries outside a request still falls back to the authenticated
-  user's own branch, so nothing widens by accident.
+  403, never a silently narrowed result. `BranchContext` is a container
+  singleton — a service that queries outside a request still falls back to
+  the authenticated user's own branch, so nothing widens by accident.
+  **`ResolveBranchContext` is prepended to the whole `api` group in
+  `bootstrap/app.php`, ahead of `SubstituteBindings`, and resolves the
+  Sanctum user itself rather than relying on `auth:sanctum` having run.**
+  That ordering is load-bearing, not incidental: route-model binding
+  queries branch-scoped models (the `{user}` in `/users/{user}`, `{ticket}`,
+  `{sale}`, ...), so with the middleware registered on the route group
+  instead, binding runs first under the default own-branch scope and
+  `?branch=all` still 404s on another branch's record. Moving it also means
+  it runs on unauthenticated routes (`/health`, `/public/verify/{token}`);
+  that's fine — no user resolves, so the scope is unrestricted exactly as
+  before, and a stray `?branch=` there is ignored rather than throwing.
   **Gotcha**: a record's *related* model can legitimately sit in a
   different branch than the record itself (a repeat customer, a technician
   covering another branch) — eager-loading that relation the normal way
@@ -137,6 +146,16 @@ automatically (see `getRouteKeyName()` below).
   `CustomerDeviceRepository::findAllByImei()`, and
   `StockAdjustmentRepository::filteredQuery()` (its `creator` is a
   branch-scoped `User`) for places this already bit or was pre-empted.
+- **A DB column default does not populate the model you just created.**
+  `Model::create()` returns the in-memory instance, so a column the client
+  didn't send is `null` on it — even though the row in the database has
+  the default. The 201 response is serialized from that instance, so it
+  reports a wrong value while the DB is correct. Bit twice: `branches.type`
+  (crashed `BranchResource`, which calls `$this->type->value`) and
+  `users.is_active` (returned `is_active: null` on an account that was
+  actually active, so a client would read a new cashier as disabled). Fix
+  is a `protected $attributes = [...]` on the model mirroring the column
+  default — needed on any column with a DB default that a Resource reads.
 - **A `#[Fillable]` list missing a genuinely-required column fails
   silently, not loudly** — `Sale` was missing `sale_number`; mass-assigned
   `Sale::create([...])` just dropped it (Eloquent guards unlisted keys out
@@ -185,6 +204,18 @@ are what separate the owner's dashboard from the cashier's. When adding a
 test that needs "a role without `tickets.update`", note every seeded role
 now has it — grant a bare permission to a plain `User::factory()` user
 instead (see `RepairTicketTest`'s unlock-fields test).
+
+Staff accounts are created through the ordinary `POST /api/v1/users` with
+`role: "cashier"` — there's no separate per-role endpoint. Two gates, both
+in the Store/Update user requests: `users.manage` (owner-only today) to
+touch staff at all, plus `UserPolicy::assignRole()`, which refuses to
+grant a role the creator couldn't hold themselves (only an owner mints an
+owner). The second one is deliberately checked in `authorize()`, so it
+returns 403 rather than 422 — and it tolerates a missing/non-string
+`role`, because `authorize()` runs *before* validation and absent input
+should surface as the `required` rule's 422, not as an escalation attempt.
+An owner administers the other branch's staff with `?branch=all` on the
+show/index routes.
 
 ### Errors and the state machine
 

@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureIdempotencyKey;
 use App\Http\Middleware\ForceJsonResponse;
+use App\Http\Middleware\ResolveBranchContext;
 use App\Support\Api\ApiException;
 use App\Support\Api\ApiResponse;
 use App\Support\Api\ErrorCode;
@@ -28,6 +29,15 @@ return Application::configure(basePath: dirname(__DIR__))
         // what the client actually sent, so nothing can content-negotiate
         // its way into an HTML response.
         $middleware->append(ForceJsonResponse::class);
+
+        // Branch scope must be resolved BEFORE SubstituteBindings, because
+        // route-model binding queries branch-scoped models (e.g. the
+        // {user} in /users/{user}) through BranchScope. Registered after
+        // it, an owner's ?branch=all still 404s on a route-bound record
+        // from another branch — the binding already ran under the default
+        // own-branch scope. It resolves the user itself rather than
+        // relying on auth:sanctum having run (see BranchContext).
+        $middleware->prependToGroup('api', ResolveBranchContext::class);
 
         // Idempotency-Key support for every write endpoint. Safe to run for
         // every api request — it's a no-op unless the header is present.
