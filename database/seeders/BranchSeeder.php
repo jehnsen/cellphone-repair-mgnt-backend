@@ -10,16 +10,9 @@ class BranchSeeder extends Seeder
     public function run(): void
     {
         Branch::factory()->create([
-            'name' => 'FixMo Phone Repair — Quezon City (Main)',
-            'code' => 'QC',
-            'city' => 'Quezon City',
-        ]);
-
-        Branch::factory()->create([
-            'name' => 'FixMo Phone Repair — Cebu City',
-            'code' => 'CEB',
-            'city' => 'Cebu City',
-            'province' => 'Cebu',
+            'name' => 'Nelson Cellphone and Computer Repair',
+            'code' => 'AL',
+            'city' => 'Alfonso Lista',
         ]);
     }
 }
