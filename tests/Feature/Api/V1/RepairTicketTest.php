@@ -4,6 +4,8 @@ use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\CustomerDevice;
 use App\Models\RepairTicket;
+use App\Models\User;
+use Database\Seeders\RoleAndPermissionSeeder;
 
 function createTicketFixtures(Branch $branch): array
 {
@@ -102,7 +104,22 @@ it('rejects ticket creation without terms accepted', function () {
     ])->assertStatus(422)->assertJsonPath('error.code', 'VALIDATION_FAILED');
 });
 
-it('forbids a cashier from creating a ticket', function () {
+// The cashier takes job orders in at the counter (see
+// RoleAndPermissionSeeder); a technician works the bench and does not.
+it('forbids a technician from creating a ticket', function () {
+    $branch = Branch::factory()->create();
+    [, $token] = userWithRole('technician', $branch);
+    [$customer, $device] = createTicketFixtures($branch);
+
+    $this->withToken($token)->postJson('/api/v1/tickets', [
+        'branch_ulid' => $branch->ulid,
+        'customer_ulid' => $customer->ulid,
+        'customer_device_ulid' => $device->ulid,
+        'terms_accepted' => true,
+    ])->assertStatus(403);
+});
+
+it('lets a cashier create a ticket at a repair branch', function () {
     $branch = Branch::factory()->create();
     [, $token] = userWithRole('cashier', $branch);
     [$customer, $device] = createTicketFixtures($branch);
@@ -112,7 +129,7 @@ it('forbids a cashier from creating a ticket', function () {
         'customer_ulid' => $customer->ulid,
         'customer_device_ulid' => $device->ulid,
         'terms_accepted' => true,
-    ])->assertStatus(403);
+    ])->assertStatus(201);
 });
 
 it('allows a legal status transition and records a timeline event', function () {
@@ -183,8 +200,10 @@ it('blocks edits to a released ticket', function () {
     ])->assertStatus(409)->assertJsonPath('error.code', 'INVALID_STATUS_TRANSITION');
 });
 
-it('hides margin and unlock fields from a role without the matching permission', function () {
+it('hides margin from a role without reports.margin.view', function () {
     $branch = Branch::factory()->create();
+    // A cashier has tickets.update (so unlock fields are visible to them)
+    // but never reports.margin.view — money stays owner/manager only.
     [, $cashierToken] = userWithRole('cashier', $branch);
     $ticket = RepairTicket::factory()->create([
         'branch_id' => $branch->id,
@@ -194,8 +213,30 @@ it('hides margin and unlock fields from a role without the matching permission',
 
     $response = $this->withToken($cashierToken)->getJson("/api/v1/tickets/{$ticket->ulid}")->assertOk();
 
-    expect($response->json('data'))->not->toHaveKey('unlock_value');
     expect($response->json('data'))->not->toHaveKey('margin');
+});
+
+it('hides unlock fields from a viewer without tickets.update', function () {
+    $branch = Branch::factory()->create();
+
+    // Every seeded role now holds tickets.update, so grant the bare
+    // permission directly — this asserts the resource's own gate rather
+    // than whichever role happens to lack it today.
+    test()->seed(RoleAndPermissionSeeder::class);
+    $viewer = User::factory()->create(['branch_id' => $branch->id]);
+    $viewer->givePermissionTo('tickets.view');
+    $token = $viewer->createToken('test')->plainTextToken;
+
+    $ticket = RepairTicket::factory()->create([
+        'branch_id' => $branch->id,
+        'unlock_method' => 'pin',
+        'unlock_value' => '1234',
+    ]);
+
+    $response = $this->withToken($token)->getJson("/api/v1/tickets/{$ticket->ulid}")->assertOk();
+
+    expect($response->json('data'))->not->toHaveKey('unlock_value')
+        ->and($response->json('data'))->not->toHaveKey('unlock_method');
 });
 
 it('shows unlock fields to a role with tickets.update permission', function () {

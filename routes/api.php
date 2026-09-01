@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\Catalog\ProductController;
 use App\Http\Controllers\Api\V1\Catalog\ServiceController;
 use App\Http\Controllers\Api\V1\CustomerController;
 use App\Http\Controllers\Api\V1\CustomerDeviceController;
+use App\Http\Controllers\Api\V1\DashboardController;
 use App\Http\Controllers\Api\V1\DiscountController;
 use App\Http\Controllers\Api\V1\GoodsReceiptController;
 use App\Http\Controllers\Api\V1\HealthController;
@@ -22,6 +23,7 @@ use App\Http\Controllers\Api\V1\PartSwapController;
 use App\Http\Controllers\Api\V1\PublicVerificationController;
 use App\Http\Controllers\Api\V1\PurchaseOrderController;
 use App\Http\Controllers\Api\V1\RefurbJobController;
+use App\Http\Controllers\Api\V1\RepairBoardController;
 use App\Http\Controllers\Api\V1\RepairFindingController;
 use App\Http\Controllers\Api\V1\RepairTicketController;
 use App\Http\Controllers\Api\V1\ReportController;
@@ -32,11 +34,13 @@ use App\Http\Controllers\Api\V1\ShiftController;
 use App\Http\Controllers\Api\V1\StockAdjustmentController;
 use App\Http\Controllers\Api\V1\StoreCreditController;
 use App\Http\Controllers\Api\V1\SupplierController;
+use App\Http\Controllers\Api\V1\SystemController;
 use App\Http\Controllers\Api\V1\TicketLineController;
 use App\Http\Controllers\Api\V1\TicketPaymentController;
 use App\Http\Controllers\Api\V1\TicketPhotoController;
 use App\Http\Controllers\Api\V1\TicketQuoteController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Middleware\ResolveBranchContext;
 use Illuminate\Support\Facades\Route;
 
 // Everything lives under /api/v1 (see docs/design/01-domain-design.md §6).
@@ -56,7 +60,10 @@ Route::prefix('v1')->group(function (): void {
     // see AppServiceProvider), not auth, is what keeps it from being scraped.
     Route::middleware('throttle:public-verify')->get('/public/verify/{token}', [PublicVerificationController::class, 'show']);
 
-    Route::middleware('auth:sanctum')->group(function (): void {
+    // ResolveBranchContext must run *after* auth — it reads the resolved
+    // user to decide this request's branch scope (own branch by default;
+    // ?branch=all / ?branch={ulid} for an owner holding branches.view_all).
+    Route::middleware(['auth:sanctum', ResolveBranchContext::class])->group(function (): void {
         Route::get('/auth/tokens', [TokenController::class, 'index']);
         Route::delete('/auth/tokens/{tokenId}', [TokenController::class, 'destroy'])
             ->whereNumber('tokenId');
@@ -96,7 +103,17 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/customers/{customer}/store-credit', [StoreCreditController::class, 'show']);
         Route::post('/customers/{customer}/store-credit/adjust', [StoreCreditController::class, 'adjust']);
 
+        // Cross-context landing summary. Scope follows ?branch (own branch
+        // by default; ?branch=all needs branches.view_all), detail level
+        // follows reports.margin.view.
+        Route::get('/dashboard', [DashboardController::class, 'index']);
+
         // Repair tickets — Stage 5: state machine, timeline, photos, quotes.
+        //
+        // The board must be declared before the apiResource below, or
+        // `/tickets/board` binds "board" as a ticket ulid and 404s.
+        Route::get('/tickets/board', [RepairBoardController::class, 'index']);
+
         Route::apiResource('tickets', RepairTicketController::class)
             ->parameters(['tickets' => 'ticket'])
             ->except(['destroy']);
@@ -215,6 +232,14 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/message-templates', [MessageTemplateController::class, 'store']);
         Route::get('/message-templates/{messageTemplate}', [MessageTemplateController::class, 'show']);
         Route::match(['put', 'patch'], '/message-templates/{messageTemplate}', [MessageTemplateController::class, 'update']);
+
+        // One-shot database reset for a fresh client install — drops every
+        // table, re-migrates, re-seeds only the baseline (roles, branch,
+        // settings, users, catalog). Owner-only + confirmation-gated (see
+        // FreshInstallRequest), on its own trickle limiter, and refused in
+        // production unless APP_ALLOW_SYSTEM_RESET=true.
+        Route::middleware('throttle:system-reset')
+            ->post('/system/fresh-install', [SystemController::class, 'freshInstall']);
     });
 
     // Exists only so the exception-handling test suite can assert the 500

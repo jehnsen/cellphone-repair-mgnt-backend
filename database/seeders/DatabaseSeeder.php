@@ -5,10 +5,11 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 
 /**
- * Demo dataset per docs/design/01-domain-design.md's Testing section: 2
- * branches, 8 users across all roles, 25 device models, 60 products across
- * all three types, 40 serialized units, 25 customers, 120 tickets spread
- * across every status, 90 days of sales, and a full shift history.
+ * Demo dataset per docs/design/01-domain-design.md's Testing section,
+ * layered on top of BaseInstallSeeder (the roles/branch/settings/users/
+ * catalog baseline a real client install gets): serialized units,
+ * customers, tickets spread across every status, 90 days of sales, a full
+ * shift history, buy-backs, and installments.
  *
  * Does NOT use WithoutModelEvents — model events are load-bearing here
  * (HasUlid generates ulids on creating(), VerificationToken generates its
@@ -19,11 +20,7 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
-            RoleAndPermissionSeeder::class,
-            BranchSeeder::class,
-            SettingSeeder::class,
-            UserSeeder::class,
-            CatalogSeeder::class,
+            BaseInstallSeeder::class,
             SupplierSeeder::class,
             CustomerSeeder::class,
             InventorySeeder::class,

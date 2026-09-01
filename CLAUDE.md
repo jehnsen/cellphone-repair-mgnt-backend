@@ -21,10 +21,14 @@ machine/timeline/photos/quotes → Stage 6 inventory core (suppliers,
 serialized units, the stock ledger) → Stage 7 chain of custody (IMEI
 checkpoints, part swaps, public verification) → Stage 8 POS (shifts, sales,
 payments) → purchase orders/goods receipts, refunds, buy-back/refurb,
-installments, and reporting. **Not built**: notifications/message
-templates, the unclaimed-notice 30/60/90-day job, document reprints, and a
-scheduled command to populate the reporting rollup tables (reports compute
-live instead — see ReportService's docblock). Check `routes/api.php` and
+installments, and reporting. A `POST /api/v1/system/fresh-install` endpoint
+(owner-only, confirmation-gated) resets a new client deployment to a
+baseline install — `migrate:fresh` plus `BaseInstallSeeder`
+(roles/permissions, the shop branch, settings, staff, catalog), none of
+the demo data. **Not built**: notifications/message templates, the
+unclaimed-notice 30/60/90-day job, document reprints, and a scheduled
+command to populate the reporting rollup tables (reports compute live
+instead — see ReportService's docblock). Check `routes/api.php` and
 `app/Http/Controllers/Api/V1/` to see what's actually implemented before
 assuming something exists.
 
@@ -113,8 +117,17 @@ automatically (see `getRouteKeyName()` below).
   not in URLs, not in response bodies, not in request bodies.
 - **Branch scoping**: models with `branch_id` carry
   `#[ScopedBy(BranchScope::class)]` (`app/Models/Scopes/BranchScope.php`) —
-  scopes every query to `Auth::user()->branch_id` when authenticated, a
-  no-op otherwise (console/seeders/cross-branch jobs see everything).
+  scopes every query to whatever `App\Support\BranchContext` resolved for
+  the request, a no-op otherwise (console/seeders/cross-branch jobs see
+  everything). The default is still the caller's own `branch_id`, so no
+  response changes unless a client explicitly asks: `?branch=all` or
+  `?branch={ulid}` widens or switches scope, and requires the
+  `branches.view_all` permission (owner only) — anyone else asking gets
+  403, never a silently narrowed result. `ResolveBranchContext` middleware
+  runs it once per request, inside the `auth:sanctum` group (it needs the
+  resolved user), and `BranchContext` is a container singleton — a service
+  that queries outside a request still falls back to the authenticated
+  user's own branch, so nothing widens by accident.
   **Gotcha**: a record's *related* model can legitimately sit in a
   different branch than the record itself (a repeat customer, a technician
   covering another branch) — eager-loading that relation the normal way
@@ -150,6 +163,28 @@ automatically (see `getRouteKeyName()` below).
   `SELECT ... FOR UPDATE` counter per branch/scope/year/month; ticket/sale
   numbers embed the branch's `code` (`JO-QC-202608-0001`) because the
   counter itself is per-branch.
+
+### Branch types and who can do what
+
+`branches.type` (`App\Support\BranchType`) is either `repair_and_sales` or
+`sales_only`. A `sales_only` branch is a pure retail counter — POS,
+inventory, and buy-back *acquisitions* work there; the whole repair-write
+surface (creating job orders, moving them across the board, findings, IMEI
+verifications, part swaps, refurb jobs) is closed. Enforced by
+`App\Policies\Concerns\ChecksBranchCapabilities`, which every repair policy
+ANDs with its permission check — so the *same* cashier role can take a job
+order at the repair branch and is 403'd at the retail one. Reading existing
+tickets is deliberately **not** gated on branch type; only writing is.
+
+The cashier role is the front-counter role, not a POS-only one: it holds
+`tickets.create/update/release` (job orders, the board, releasing a paid
+device) and `sales.create` (which is what `recordPayment` checks) on top of
+POS and shifts. What it never holds is `branches.view_all` (cross-branch
+sight) or `reports.margin.view` (cost, margin, stock valuation) — those two
+are what separate the owner's dashboard from the cashier's. When adding a
+test that needs "a role without `tickets.update`", note every seeded role
+now has it — grant a bare permission to a plain `User::factory()` user
+instead (see `RepairTicketTest`'s unlock-fields test).
 
 ### Errors and the state machine
 

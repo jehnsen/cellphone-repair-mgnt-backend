@@ -2,10 +2,12 @@
 
 namespace Database\Factories;
 
+use App\Models\Branch;
+use App\Support\BranchType;
 use App\Support\PhilippineFaker;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/** @extends Factory<\App\Models\Branch> */
+/** @extends Factory<Branch> */
 class BranchFactory extends Factory
 {
     public function definition(): array
@@ -15,6 +17,7 @@ class BranchFactory extends Factory
         return [
             'name' => 'FixMo Phone Repair — '.$city,
             'code' => strtoupper(fake()->unique()->lexify('???')),
+            'type' => BranchType::RepairAndSales,
             'legal_name' => 'FixMo Phone Repair Services Corp.',
             'address_line1' => fake()->buildingNumber().' '.fake()->streetName(),
             'address_line2' => null,
@@ -31,5 +34,11 @@ class BranchFactory extends Factory
             'timezone' => 'Asia/Manila',
             'is_active' => true,
         ];
+    }
+
+    /** A retail-only counter — no repair bench (see ChecksBranchCapabilities). */
+    public function salesOnly(): static
+    {
+        return $this->state(fn () => ['type' => BranchType::SalesOnly]);
     }
 }

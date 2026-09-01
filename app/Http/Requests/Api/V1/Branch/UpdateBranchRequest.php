@@ -4,6 +4,7 @@ namespace App\Http\Requests\Api\V1\Branch;
 
 use App\Rules\PhMobile;
 use App\Rules\ValidTin;
+use App\Support\BranchType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -21,6 +22,7 @@ class UpdateBranchRequest extends FormRequest
         return [
             'name' => ['sometimes', 'string', 'max:255'],
             'code' => ['sometimes', 'string', 'max:10', Rule::unique('branches', 'code')->ignore($branch->id)],
+            'type' => ['sometimes', Rule::enum(BranchType::class)],
             'legal_name' => ['nullable', 'string', 'max:255'],
             'address_line1' => ['nullable', 'string', 'max:255'],
             'address_line2' => ['nullable', 'string', 'max:255'],

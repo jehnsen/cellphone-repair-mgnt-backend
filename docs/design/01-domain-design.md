@@ -567,9 +567,34 @@ Ops (outside the JSON API surface, no `/api/v1` prefix — see brief's Rule Zero
 - `/horizon/*` — IP allow-list + basic auth
 - `/telescope/*` — same, disabled in production
 
+Dashboard & board
+- `GET /api/v1/dashboard` — landing summary (sales / repairs / inventory).
+  Detail level follows the caller: `reports.margin.view` adds
+  `inventory.stock_value`; without it the response carries counts only.
+  With `?branch=all` it also returns a per-branch `branches[]` breakdown —
+  the owner's both-branches-in-one-view.
+- `GET /api/v1/tickets/board` — open job orders grouped into status
+  columns, as lean cards (no pricing, no unlock secrets, no claim code).
+  Read-only; moving a card is still `POST /tickets/{ticket}/transition`.
+
+Branch scoping (applies to every branch-scoped read)
+- Default: the caller's own branch, exactly as before.
+- `?branch=all` / `?branch={ulid}`: requires `branches.view_all` (owner
+  only). Anyone else asking gets `403 FORBIDDEN` rather than a silently
+  narrowed result. See `App\Support\BranchContext`.
+
 Health
 - `GET /api/v1/health`
 - `GET /api/v1/ready`
+
+System
+- `POST /api/v1/system/fresh-install` — one-shot database reset for a new
+  client deployment: drops every table, re-runs all migrations, re-seeds
+  only the baseline (`BaseInstallSeeder` — roles/permissions, the shop
+  branch, shop-wide settings, staff accounts, catalog), never the demo
+  data. Owner-role + `users.manage` only, body must carry
+  `{"confirm": "RESET"}`, on its own 5/day limiter, and refused in
+  production unless `APP_ALLOW_SYSTEM_RESET=true`.
 
 ---
 

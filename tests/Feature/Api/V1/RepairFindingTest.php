@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Branch;
 use App\Models\RepairFinding;
 use App\Models\RepairTicket;
 use App\Models\TicketEvent;
@@ -196,11 +197,23 @@ it('lets a cashier read a finding but not write one', function () {
     $this->withToken($cashierToken)->getJson("/api/v1/tickets/{$ticket->ulid}/finding")->assertOk();
 });
 
-it('forbids a cashier from writing a finding', function () {
+// A cashier runs the counter end to end at a small shop, so they record
+// findings too — see RoleAndPermissionSeeder's cashier block.
+it('lets a cashier write a finding at a repair branch', function () {
     [$manager] = userWithRole('manager');
     $ticket = RepairTicket::factory()->create(['branch_id' => $manager->branch_id, 'status' => 'in_repair']);
 
     [, $cashierToken] = userWithRole('cashier', $manager->branch);
+
+    $this->withToken($cashierToken)->putJson("/api/v1/tickets/{$ticket->ulid}/finding", findingPayload())
+        ->assertSuccessful();
+});
+
+it('forbids writing a finding at a sales-only branch', function () {
+    $branch = Branch::factory()->salesOnly()->create();
+    $ticket = RepairTicket::factory()->create(['branch_id' => $branch->id, 'status' => 'in_repair']);
+
+    [, $cashierToken] = userWithRole('cashier', $branch);
 
     $this->withToken($cashierToken)->putJson("/api/v1/tickets/{$ticket->ulid}/finding", findingPayload())
         ->assertStatus(403);

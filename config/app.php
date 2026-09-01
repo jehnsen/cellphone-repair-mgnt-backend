@@ -43,6 +43,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Allow System Reset
+    |--------------------------------------------------------------------------
+    |
+    | Guards POST /api/v1/system/fresh-install (see SystemResetService).
+    | Outside production the endpoint is always available; in production it
+    | is refused unless this is explicitly set to true, since the reset
+    | drops every table and is unrecoverable.
+    |
+    */
+
+    'allow_system_reset' => (bool) env('APP_ALLOW_SYSTEM_RESET', false),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application URL
     |--------------------------------------------------------------------------
     |

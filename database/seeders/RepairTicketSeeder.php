@@ -74,7 +74,7 @@ class RepairTicketSeeder extends Seeder
 
                 TicketEvent::factory()->create([
                     'repair_ticket_id' => $ticket->id,
-                    'actor_id' => $technician?->id,
+                    'actor_id' => $technician?->id ?? $fallbackActor->id,
                     'event_type' => 'ticket_created',
                     'from_status' => null,
                     'to_status' => 'received',
@@ -93,12 +93,17 @@ class RepairTicketSeeder extends Seeder
 
                 VerificationToken::factory()->create(['repair_ticket_id' => $ticket->id]);
 
-                $this->applyStatusHistory($ticket, $status, $receivedAt, $servicesByBranch, $technician);
+                $this->applyStatusHistory($ticket, $status, $receivedAt, $servicesByBranch, $technician ?? $fallbackActor);
             }
         }
     }
 
-    private function applyStatusHistory(RepairTicket $ticket, string $status, Carbon $receivedAt, $services, ?User $technician): void
+    /**
+     * $actor is the assigned technician where there is one, otherwise a
+     * fallback staff account — the event/payment/verification rows written
+     * here all have a NOT NULL actor, so this is never null.
+     */
+    private function applyStatusHistory(RepairTicket $ticket, string $status, Carbon $receivedAt, $services, User $actor): void
     {
         $trail = match ($status) {
             'received' => [],
@@ -123,7 +128,7 @@ class RepairTicketSeeder extends Seeder
 
             TicketEvent::factory()->create([
                 'repair_ticket_id' => $ticket->id,
-                'actor_id' => $technician?->id,
+                'actor_id' => $actor->id,
                 'event_type' => 'status_changed',
                 'from_status' => $previous,
                 'to_status' => $to,
@@ -157,7 +162,7 @@ class RepairTicketSeeder extends Seeder
                 'payable_id' => $ticket->id,
                 'method' => fake()->randomElement(['cash', 'gcash', 'maya']),
                 'amount' => $ticket->approved_amount,
-                'actor_id' => $technician?->id,
+                'actor_id' => $actor->id,
                 'created_at' => $cursor,
             ]);
 
@@ -171,7 +176,7 @@ class RepairTicketSeeder extends Seeder
                 'repair_ticket_id' => $ticket->id,
                 'phase' => 'release',
                 'scanned_imei' => $ticket->customerDevice?->imei_normalized ?? fake()->numerify('###############'),
-                'actor_id' => $technician?->id,
+                'actor_id' => $actor->id,
                 'created_at' => $cursor,
             ]);
         }

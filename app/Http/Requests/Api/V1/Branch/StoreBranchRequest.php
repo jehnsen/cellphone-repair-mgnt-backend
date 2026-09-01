@@ -5,6 +5,7 @@ namespace App\Http\Requests\Api\V1\Branch;
 use App\Models\Branch;
 use App\Rules\PhMobile;
 use App\Rules\ValidTin;
+use App\Support\BranchType;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -20,6 +21,7 @@ class StoreBranchRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'code' => ['required', 'string', 'max:10', Rule::unique('branches', 'code')],
+            'type' => ['sometimes', Rule::enum(BranchType::class)],
             'legal_name' => ['nullable', 'string', 'max:255'],
             'address_line1' => ['nullable', 'string', 'max:255'],
             'address_line2' => ['nullable', 'string', 'max:255'],

@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Support\BranchContext;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -21,7 +22,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // One instance per request — BranchScope resolves it out of the
+        // container on every query, and must get the scope that
+        // ResolveBranchContext middleware already worked out.
+        $this->app->singleton(BranchContext::class);
     }
 
     /**
@@ -42,6 +46,14 @@ class AppServiceProvider extends ServiceProvider
         // docs/design/01-domain-design.md §2.5 / §6.
         RateLimiter::for('public-verify', function (Request $request) {
             return Limit::perMinute(10)->by($request->ip());
+        });
+
+        // POST /system/fresh-install wipes and re-seeds the whole database.
+        // It's a deploy-time action, run once — a handful of attempts a day
+        // is plenty, and this keeps a leaked owner token from being able to
+        // repeatedly nuke the shop.
+        RateLimiter::for('system-reset', function (Request $request) {
+            return Limit::perDay(5)->by($request->user()?->id ?: $request->ip());
         });
 
         // Credential-guessing limiter for POST /auth/token. That route sits

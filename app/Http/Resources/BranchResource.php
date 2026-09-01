@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Branch;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\Branch */
+/** @mixin Branch */
 class BranchResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -14,6 +15,10 @@ class BranchResource extends JsonResource
             'ulid' => $this->ulid,
             'name' => $this->name,
             'code' => $this->code,
+            'type' => $this->type->value,
+            // Saves the client hardcoding a second copy of the rule — the
+            // frontend hides the repair tabs on a sales-only branch.
+            'offers_repairs' => $this->offersRepairs(),
             'legal_name' => $this->legal_name,
             'address' => [
                 'line1' => $this->address_line1,

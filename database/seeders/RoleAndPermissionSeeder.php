@@ -22,7 +22,10 @@ class RoleAndPermissionSeeder extends Seeder
         'shifts.open', 'shifts.close',
         'customers.view', 'customers.manage', 'store_credit.manage',
         'catalog.view', 'catalog.manage',
-        'branches.view', 'branches.manage',
+        // branches.view_all is what lifts BranchScope — the holder can ask
+        // for ?branch=all / ?branch={ulid} and see other branches' sales,
+        // repairs, and inventory. Owner only; see BranchScope.
+        'branches.view', 'branches.view_all', 'branches.manage',
         'users.view', 'users.manage',
         'reports.view', 'reports.margin.view',
         'settings.manage',
@@ -44,8 +47,13 @@ class RoleAndPermissionSeeder extends Seeder
             'reports.view', 'reports.margin.view',
             'acquisitions.manage',
         ],
+        // A cashier runs the front counter end to end: POS, taking in a job
+        // order, moving it across the status board, entering findings, and
+        // releasing the device once it's paid. What they never get is
+        // cross-branch sight (no branches.view_all) or cost/margin
+        // (no reports.margin.view) — see BranchScope and ReportController.
         'cashier' => [
-            'tickets.view',
+            'tickets.view', 'tickets.create', 'tickets.update', 'tickets.release',
             'inventory.view',
             'sales.create', 'sales.refund',
             'shifts.open', 'shifts.close',

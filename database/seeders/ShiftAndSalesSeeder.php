@@ -23,9 +23,18 @@ class ShiftAndSalesSeeder extends Seeder
         $sellables = Product::where('track_inventory', true)->where('type', '!=', 'handset')->get();
 
         foreach ($branches as $branch) {
+            // Prefer this branch's cashiers, then any cashier, then any
+            // staff at all — a small shop (owner + manager, no dedicated
+            // cashier) still rings up sales.
             $cashiers = User::role('cashier')->where('branch_id', $branch->id)->get();
             if ($cashiers->isEmpty()) {
                 $cashiers = User::role('cashier')->get();
+            }
+            if ($cashiers->isEmpty()) {
+                $cashiers = User::where('branch_id', $branch->id)->get();
+            }
+            if ($cashiers->isEmpty()) {
+                $cashiers = User::query()->get();
             }
 
             for ($daysAgo = 89; $daysAgo >= 0; $daysAgo--) {
