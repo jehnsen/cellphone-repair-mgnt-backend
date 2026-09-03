@@ -5206,6 +5206,118 @@
                         }
                     },
                     "response": []
+                },
+                {
+                    "name": "Repair P&L Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/repair-pnl?date_from=2026-01-01&date_to=2026-12-31",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "repair-pnl"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "2026-01-01",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "2026-12-31",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Repair labour\/parts revenue, parts COGS, and margin per technician — revenue recognised at ticket release. Requires reports.margin.view (owner\/manager only), 403 for a cashier."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cash Reconciliation (Z-Report)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/cash-reconciliation?date_from=2026-01-01&date_to=2026-12-31",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "cash-reconciliation"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "2026-01-01",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "2026-12-31",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "End-of-day drawer reconciliation, one row per shift opened in the window — same expected-cash formula as closing a shift, plus a per-method tender breakdown. Open shifts still get a live expected_cash."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Refunds & Voids Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/refunds-voids?date_from=2026-01-01&date_to=2026-12-31",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "refunds-voids"
+                            ],
+                            "query": [
+                                {
+                                    "key": "date_from",
+                                    "value": "2026-01-01",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "date_to",
+                                    "value": "2026-12-31",
+                                    "disabled": true
+                                }
+                            ]
+                        },
+                        "description": "Refunds (dated by created_at) and voided sales (dated by the sale's updated_at) in the window, with by-method and by-reason rollups."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Receivables Aging Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/reports\/receivables-aging",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "reports",
+                                "receivables-aging"
+                            ]
+                        },
+                        "description": "Snapshot (no date range) of every repair ticket still carrying balance > 0, bucketed 0-30 \/ 31-60 \/ 61-90 \/ 90+ from the release date (else promised date, else intake)."
+                    },
+                    "response": []
                 }
             ]
         },

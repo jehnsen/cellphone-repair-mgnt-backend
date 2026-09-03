@@ -597,6 +597,18 @@ Reports (all read-only, JSON with aggregate + rows + `meta.generated_at`)
 - `GET /api/v1/reports/dead-stock`
 - `GET /api/v1/reports/unclaimed-aging`
 - `GET /api/v1/reports/commissions-payable`
+- `GET /api/v1/reports/repair-pnl` — repair labour/parts revenue, parts COGS,
+  and margin per technician; revenue recognised at ticket release.
+  `reports.margin.view` (cost/margin visibility).
+- `GET /api/v1/reports/cash-reconciliation` — end-of-day Z-report, one row
+  per shift opened in the window, same expected-cash formula as
+  `ShiftService::close()` plus a full tender breakdown; open shifts get a
+  live `expected_cash`.
+- `GET /api/v1/reports/refunds-voids` — refunds (by `created_at`) and voided
+  sales (by `updated_at`) in the window, with by-method/by-reason rollups.
+- `GET /api/v1/reports/receivables-aging` — snapshot of every repair ticket
+  still carrying `balance > 0`, bucketed 0-30 / 31-60 / 61-90 / 90+ from the
+  release date (else promised date, else intake).
 
 Sync
 - `GET /api/v1/sync/pull?since=`

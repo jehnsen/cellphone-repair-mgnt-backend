@@ -81,6 +81,40 @@ class ReportController extends Controller
         return $this->respond($this->reports->commissionsPayable($from, $to));
     }
 
+    /** Repair labour/parts revenue, parts COGS, and margin — cost visibility, so margin-gated. */
+    public function repairPnl(Request $request): JsonResponse
+    {
+        $this->authorizeReports($request, requireMargin: true);
+        [$from, $to] = $this->dateRange($request);
+
+        return $this->respond($this->reports->repairPnl($from, $to));
+    }
+
+    /** End-of-day cash reconciliation / Z-report — one row per shift opened in the window. */
+    public function cashReconciliation(Request $request): JsonResponse
+    {
+        $this->authorizeReports($request);
+        [$from, $to] = $this->dateRange($request);
+
+        return $this->respond($this->reports->cashReconciliation($from, $to));
+    }
+
+    public function refundsVoids(Request $request): JsonResponse
+    {
+        $this->authorizeReports($request);
+        [$from, $to] = $this->dateRange($request);
+
+        return $this->respond($this->reports->refundsVoids($from, $to));
+    }
+
+    /** Snapshot as of now — no date range. */
+    public function receivablesAging(Request $request): JsonResponse
+    {
+        $this->authorizeReports($request);
+
+        return $this->respond($this->reports->receivablesAging());
+    }
+
     private function authorizeReports(Request $request, bool $requireMargin = false): void
     {
         abort_unless((bool) $request->user()?->can('reports.view'), 403, 'You do not have permission to view reports.');

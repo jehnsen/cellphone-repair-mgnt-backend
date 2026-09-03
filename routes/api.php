@@ -248,6 +248,10 @@ Route::prefix('v1')->group(function (): void {
         Route::get('/reports/dead-stock', [ReportController::class, 'deadStock']);
         Route::get('/reports/unclaimed-aging', [ReportController::class, 'unclaimedAging']);
         Route::get('/reports/commissions-payable', [ReportController::class, 'commissionsPayable']);
+        Route::get('/reports/repair-pnl', [ReportController::class, 'repairPnl']);
+        Route::get('/reports/cash-reconciliation', [ReportController::class, 'cashReconciliation']);
+        Route::get('/reports/refunds-voids', [ReportController::class, 'refundsVoids']);
+        Route::get('/reports/receivables-aging', [ReportController::class, 'receivablesAging']);
 
         // Notifications & compliance — message templates only for now
         // (the dispatcher, outbox, and unclaimed-notice job are still
