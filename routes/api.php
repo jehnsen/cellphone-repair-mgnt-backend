@@ -28,12 +28,15 @@ use App\Http\Controllers\Api\V1\RepairFindingController;
 use App\Http\Controllers\Api\V1\RepairTicketController;
 use App\Http\Controllers\Api\V1\ReportController;
 use App\Http\Controllers\Api\V1\SaleController;
+use App\Http\Controllers\Api\V1\SaleWarrantyClaimController;
+use App\Http\Controllers\Api\V1\SaleWarrantyController;
 use App\Http\Controllers\Api\V1\SerializedUnitController;
 use App\Http\Controllers\Api\V1\SettingController;
 use App\Http\Controllers\Api\V1\ShiftController;
 use App\Http\Controllers\Api\V1\StockAdjustmentController;
 use App\Http\Controllers\Api\V1\StoreCreditController;
 use App\Http\Controllers\Api\V1\SupplierController;
+use App\Http\Controllers\Api\V1\SupplierReturnController;
 use App\Http\Controllers\Api\V1\SystemController;
 use App\Http\Controllers\Api\V1\TicketLineController;
 use App\Http\Controllers\Api\V1\TicketPaymentController;
@@ -192,6 +195,28 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/sales/{sale}/refunds', [SaleController::class, 'refund']);
 
         Route::get('/discounts/calculate', [DiscountController::class, 'calculate']);
+
+        // Sales warranty — the shop (or manufacturer) warranty a serialized
+        // unit carries out the door when it's sold, issued automatically at
+        // checkout and kept entirely separate from repair-ticket warranties.
+        // A customer availing it files a claim that stays under CP units (it
+        // may optionally pin a job order); a factory-defective unit is sent
+        // back to its vendor as a supplier return.
+        Route::get('/sales/{sale}/warranties', [SaleWarrantyController::class, 'forSale']);
+        Route::get('/serialized-units/{serializedUnit}/warranties', [SaleWarrantyController::class, 'forUnit']);
+
+        Route::get('/sale-warranties', [SaleWarrantyController::class, 'index']);
+        Route::get('/sale-warranties/{saleWarranty}', [SaleWarrantyController::class, 'show']);
+        Route::post('/sale-warranties/{saleWarranty}/claims', [SaleWarrantyClaimController::class, 'store']);
+
+        Route::get('/sale-warranty-claims', [SaleWarrantyClaimController::class, 'index']);
+        Route::get('/sale-warranty-claims/{saleWarrantyClaim}', [SaleWarrantyClaimController::class, 'show']);
+        Route::post('/sale-warranty-claims/{saleWarrantyClaim}/resolve', [SaleWarrantyClaimController::class, 'resolve']);
+
+        Route::get('/supplier-returns', [SupplierReturnController::class, 'index']);
+        Route::post('/supplier-returns', [SupplierReturnController::class, 'store']);
+        Route::get('/supplier-returns/{supplierReturn}', [SupplierReturnController::class, 'show']);
+        Route::post('/supplier-returns/{supplierReturn}/close', [SupplierReturnController::class, 'close']);
 
         // Buy-back / refurb
         Route::apiResource('acquisitions', AcquisitionController::class)

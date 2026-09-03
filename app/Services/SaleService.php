@@ -32,6 +32,7 @@ class SaleService
         private readonly SaleRepositoryInterface $sales,
         private readonly ShiftRepositoryInterface $shiftRepository,
         private readonly StockMovementRecorder $movements,
+        private readonly SaleWarrantyService $warranties,
     ) {}
 
     public function list(): LengthAwarePaginator
@@ -105,6 +106,13 @@ class SaleService
                 }
 
                 $this->consumeStock($r, $sale, $actor);
+
+                // A sold serialized unit leaves with its own shop warranty —
+                // term from the product's catalog default unless the cashier
+                // set one on the line. Nothing repair-side is touched.
+                if ($r['sellable_type'] === 'serialized_unit') {
+                    $this->warranties->issueForLine($sale, $line, $r, $actor);
+                }
             }
 
             if ($saleDiscount !== null) {
@@ -182,6 +190,8 @@ class SaleService
                 }
             }
 
+            $this->warranties->voidForSale($sale);
+
             $sale->update(['status' => 'voided', 'void_reason' => $data['void_reason']]);
 
             return $sale->fresh(['lines', 'discounts']);
@@ -195,7 +205,11 @@ class SaleService
 
         return match ($line['sellable_type']) {
             'product' => $this->resolveProductLine($line, $branchId, $discount),
-            'serialized_unit' => $this->resolveSerializedUnitLine($line, $discount),
+            'serialized_unit' => $this->resolveSerializedUnitLine($line, $discount) + [
+                'warranty_days' => $line['warranty_days'] ?? null,
+                'warranty_coverage' => $line['warranty_coverage'] ?? null,
+                'warranty_terms' => $line['warranty_terms'] ?? null,
+            ],
             'service' => $this->resolveServiceLine($line, $discount),
         };
     }

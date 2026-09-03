@@ -26,6 +26,12 @@ class StoreSaleRequest extends FormRequest
             'lines.*.serialized_unit_ulid' => ['required_if:lines.*.sellable_type,serialized_unit', 'prohibited_unless:lines.*.sellable_type,serialized_unit', 'string', Rule::exists('serialized_units', 'ulid')],
             'lines.*.service_ulid' => ['required_if:lines.*.sellable_type,service', 'prohibited_unless:lines.*.sellable_type,service', 'string', Rule::exists('services', 'ulid')],
             'lines.*.quantity' => ['nullable', 'numeric', 'min:0.01'],
+            // Serialized-unit lines only: override the shop warranty issued
+            // at checkout. Omitted, it falls back to the product's
+            // catalog `warranty_days` (0 = issue nothing).
+            'lines.*.warranty_days' => ['nullable', 'integer', 'min:0', 'max:3650', 'prohibited_unless:lines.*.sellable_type,serialized_unit'],
+            'lines.*.warranty_coverage' => ['nullable', Rule::in(['shop', 'manufacturer']), 'prohibited_unless:lines.*.sellable_type,serialized_unit'],
+            'lines.*.warranty_terms' => ['nullable', 'string', 'max:2000', 'prohibited_unless:lines.*.sellable_type,serialized_unit'],
             'lines.*.discount' => ['nullable', 'array'],
             'lines.*.discount.type' => ['required_with:lines.*.discount', Rule::in(['percent', 'amount'])],
             'lines.*.discount.value' => ['required_with:lines.*.discount', 'numeric', 'min:0'],

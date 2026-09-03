@@ -14,7 +14,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 #[Fillable([
     'sku', 'barcode', 'name', 'product_category_id', 'device_brand_id', 'type',
-    'cost', 'selling_price', 'is_serialized', 'reorder_point', 'track_inventory', 'is_active',
+    'cost', 'selling_price', 'is_serialized', 'reorder_point', 'warranty_days', 'track_inventory', 'is_active',
 ])]
 class Product extends Model
 {
@@ -23,12 +23,18 @@ class Product extends Model
 
     public const TYPES = ['handset', 'accessory', 'part'];
 
+    /** Mirrors the column default so a create() that omits it doesn't return null (see CLAUDE.md). */
+    protected $attributes = [
+        'warranty_days' => 0,
+    ];
+
     protected function casts(): array
     {
         return [
             'cost' => 'decimal:2',
             'selling_price' => 'decimal:2',
             'is_serialized' => 'boolean',
+            'warranty_days' => 'integer',
             'track_inventory' => 'boolean',
             'is_active' => 'boolean',
         ];

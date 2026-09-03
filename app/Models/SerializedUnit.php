@@ -5,6 +5,8 @@ namespace App\Models;
 use App\Models\Concerns\BelongsToBranch;
 use App\Models\Concerns\HasUlid;
 use App\Models\Scopes\BranchScope;
+use App\Support\Api\ApiException;
+use App\Support\Api\ErrorCode;
 use Database\Factories\SerializedUnitFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\ScopedBy;
@@ -22,7 +24,7 @@ class SerializedUnit extends Model
     /** @use HasFactory<SerializedUnitFactory> */
     use BelongsToBranch, HasFactory, HasUlid;
 
-    public const STATUSES = ['in_stock', 'reserved', 'sold', 'for_repair', 'written_off'];
+    public const STATUSES = ['in_stock', 'reserved', 'sold', 'for_repair', 'written_off', 'returned_to_supplier'];
 
     public const CONDITIONS = ['brand_new', 'open_box', 'secondhand', 'refurbished'];
 
@@ -41,14 +43,14 @@ class SerializedUnit extends Model
      * per Rule 4 (a serialized unit can only be sold once). Callers must
      * already be inside a transaction.
      *
-     * @throws \App\Support\Api\ApiException with ErrorCode::UnitAlreadySold on mismatch
+     * @throws ApiException with ErrorCode::UnitAlreadySold on mismatch
      */
     public function transitionStatus(string $expectedCurrent, string $next): void
     {
         $locked = self::whereKey($this->id)->lockForUpdate()->firstOrFail();
 
         if ($locked->status !== $expectedCurrent) {
-            throw new \App\Support\Api\ApiException(\App\Support\Api\ErrorCode::UnitAlreadySold);
+            throw new ApiException(ErrorCode::UnitAlreadySold);
         }
 
         $locked->update(['status' => $next]);

@@ -179,6 +179,18 @@
         {
             "key": "message_template_ulid",
             "value": ""
+        },
+        {
+            "key": "sale_warranty_ulid",
+            "value": ""
+        },
+        {
+            "key": "sale_warranty_claim_ulid",
+            "value": ""
+        },
+        {
+            "key": "supplier_return_ulid",
+            "value": ""
         }
     ],
     "item": [
@@ -1779,7 +1791,7 @@
                                 "adjust"
                             ]
                         },
-                        "description": "Manager\/owner only (store_credit.manage). direction=credit grants, direction=debit corrects\/claws back — 422 INSUFFICIENT_STORE_CREDIT if a debit exceeds the balance. Refund- and payment-driven movements go through the sales endpoints, not here."
+                        "description": "Manager\/owner only (store_credit.manage). direction=credit grants, direction=debit corrects\/claws back \u2014 422 INSUFFICIENT_STORE_CREDIT if a debit exceeds the balance. Refund- and payment-driven movements go through the sales endpoints, not here."
                     },
                     "response": []
                 }
@@ -3839,7 +3851,7 @@
                                 "refunds"
                             ]
                         },
-                        "description": "line_index refers to the line's position in Show Sale's data.lines array (sale_lines has no ulid of its own). restock puts it back on the shelf (or flips a serialized unit back to in_stock); no_restock\/write_off both leave stock exactly as the original sale left it. refund_method: cash writes a drawer-out cash movement against your open shift (so Close Shift's expected_cash drops by the refund — needs an open shift); store_credit issues the total into the customer's store-credit ledger (the sale must have a customer); gcash\/maya\/card\/bank_transfer are reversed out-of-band."
+                        "description": "line_index refers to the line's position in Show Sale's data.lines array (sale_lines has no ulid of its own). restock puts it back on the shelf (or flips a serialized unit back to in_stock); no_restock\/write_off both leave stock exactly as the original sale left it. refund_method: cash writes a drawer-out cash movement against your open shift (so Close Shift's expected_cash drops by the refund \u2014 needs an open shift); store_credit issues the total into the customer's store-credit ledger (the sale must have a customer); gcash\/maya\/card\/bank_transfer are reversed out-of-band."
                     },
                     "response": []
                 },
@@ -3950,6 +3962,460 @@
                             ]
                         },
                         "description": "A stateless preview \u2014 no sale is created. Try type=percent&value=10 for a plain promo discount instead. senior_citizen\/pwd default their value to the legally-fixed 20% when omitted."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Sales Warranty",
+            "description": "The shop (or manufacturer) warranty a serialized unit carries out the door when it's sold \u2014 wholly separate from the repair-ticket warranties under Repair Tickets. Run Shifts > Open Shift, then Serialized Units > Register Serialized Unit (leave it in_stock), then the requests here in order. A claim filed here stays under CP units and never opens a job order.",
+            "item": [
+                {
+                    "name": "Create Sale (Serialized Unit \u2014 issues warranty)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"customer_ulid\": \"{{customer_ulid}}\",\n    \"lines\": [\n        {\n            \"sellable_type\": \"serialized_unit\",\n            \"serialized_unit_ulid\": \"{{serialized_unit_ulid}}\",\n            \"warranty_days\": 365,\n            \"warranty_coverage\": \"shop\"\n        }\n    ]\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/sales",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sales"
+                            ]
+                        },
+                        "description": "Needs an open shift and an in_stock serialized unit. A sale_warranties row is issued automatically for the serialized-unit line \u2014 term from the product's warranty_days unless warranty_days \/ warranty_coverage \/ warranty_terms override it here (omit them to use the catalog default; 0 issues nothing). The clock starts on the sale date. See List Sale's Warranties next for the issued ulid."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('sale_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "List Sale's Warranties",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/sales\/{{sale_ulid}}\/warranties",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sales",
+                                "{{sale_ulid}}",
+                                "warranties"
+                            ]
+                        },
+                        "description": "Every warranty the sale issued. Captures sale_warranty_ulid from data[0]."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data[0]) { pm.collectionVariables.set('sale_warranty_ulid', json.data[0].ulid); }"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "List Sale Warranties",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/sale-warranties?filter[coverage]=&filter[serialized_unit_id]=&sort=-created_at",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sale-warranties"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[coverage]",
+                                    "value": "shop",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[serialized_unit_id]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[customer_id]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-created_at",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Sale Warranty",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/sale-warranties\/{{sale_warranty_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sale-warranties",
+                                "{{sale_warranty_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Unit Warranty History",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/serialized-units\/{{serialized_unit_ulid}}\/warranties",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "serialized-units",
+                                "{{serialized_unit_ulid}}",
+                                "warranties"
+                            ]
+                        },
+                        "description": "Every sale warranty ever issued for this unit \u2014 useful after a unit is returned, re-received and re-sold."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "File Warranty Claim",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"reported_defect\": \"Screen flickers and the battery drains overnight.\",\n    \"handling\": \"separate\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/sale-warranties\/{{sale_warranty_ulid}}\/claims",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sale-warranties",
+                                "{{sale_warranty_ulid}}",
+                                "claims"
+                            ]
+                        },
+                        "description": "Files the claim against the sale warranty \u2014 it stays a sales-side record and never creates a repair ticket. within_coverage is stamped from the warranty's expiry at filing time (a lapsed warranty still records, just flagged false). Set handling to repair_board and add \"repair_ticket_ulid\": \"{{ticket_ulid}}\" to pin an existing job order for the bench work."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('sale_warranty_claim_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "List Warranty Claims",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/sale-warranty-claims?filter[status]=&filter[resolution]=&sort=-created_at",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sale-warranty-claims"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[status]",
+                                    "value": "open",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[resolution]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[handling]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-created_at",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Warranty Claim",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/sale-warranty-claims\/{{sale_warranty_claim_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sale-warranty-claims",
+                                "{{sale_warranty_claim_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Supplier Return",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"serialized_unit_ulid\": \"{{serialized_unit_ulid}}\",\n    \"supplier_ulid\": \"{{supplier_ulid}}\",\n    \"sale_warranty_claim_ulid\": \"{{sale_warranty_claim_ulid}}\",\n    \"reason\": \"factory_defect\",\n    \"reason_note\": \"Dead pixels out of the box.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/supplier-returns",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "supplier-returns"
+                            ]
+                        },
+                        "description": "Ships the unit back to its vendor. Writes the stock ledger (a return_in +1 first if the unit was already sold, so the round trip nets to zero on-hand, then a return_out -1) and moves the unit to returned_to_supplier. The unit must currently be in_stock, sold or for_repair \u2014 409 INVALID_STATUS_TRANSITION otherwise. sale_warranty_claim_ulid is optional (a DOA unit that never sold has no claim)."
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text\/javascript",
+                                "exec": [
+                                    "pm.test('created', () => pm.response.to.have.status(201));",
+                                    "const json = pm.response.json();",
+                                    "if (json.data && json.data.ulid) { pm.collectionVariables.set('supplier_return_ulid', json.data.ulid); }"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "List Supplier Returns",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/supplier-returns?filter[status]=&filter[reason]=&sort=-sent_at",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "supplier-returns"
+                            ],
+                            "query": [
+                                {
+                                    "key": "filter[status]",
+                                    "value": "sent",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[reason]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "filter[supplier_id]",
+                                    "value": "",
+                                    "disabled": true
+                                },
+                                {
+                                    "key": "sort",
+                                    "value": "-sent_at",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Show Supplier Return",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}\/supplier-returns\/{{supplier_return_ulid}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "supplier-returns",
+                                "{{supplier_return_ulid}}"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Close Supplier Return (Replaced)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"outcome\": \"replaced\",\n    \"replacement\": {\n        \"imei\": \"490154203237518\",\n        \"condition\": \"brand_new\"\n    },\n    \"outcome_notes\": \"Vendor swapped the unit.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/supplier-returns\/{{supplier_return_ulid}}\/close",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "supplier-returns",
+                                "{{supplier_return_ulid}}",
+                                "close"
+                            ]
+                        },
+                        "description": "outcome = replaced mints a fresh serialized unit (a normal receipt) and links it as replacement_serialized_unit; credited instead takes \\\"credit_amount\\\": 8500 and no replacement; rejected \/ closed take neither. Any still-open linked claim is carried to resolved \/ returned_to_supplier. Only a return still in \\\"sent\\\" can be closed."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Resolve Warranty Claim (alt to supplier return)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Idempotency-Key",
+                                "value": "{{$guid}}"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"resolution\": \"repaired_in_house\",\n    \"outcome_notes\": \"Reflashed firmware, tested 24h.\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}\/sale-warranty-claims\/{{sale_warranty_claim_ulid}}\/resolve",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "sale-warranty-claims",
+                                "{{sale_warranty_claim_ulid}}",
+                                "resolve"
+                            ]
+                        },
+                        "description": "Closes the claim in place \u2014 use when the defect was handled without shipping the unit back (resolution one of repaired_in_house, replaced, refunded, rejected). If Close Supplier Return above already resolved this claim, this correctly 409s (claim already closed); run it against a claim you handled directly instead."
                     },
                     "response": []
                 }

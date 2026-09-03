@@ -28,6 +28,7 @@ class UpdateProductRequest extends FormRequest
             'selling_price' => ['sometimes', 'numeric', 'min:0'],
             'is_serialized' => ['boolean'],
             'reorder_point' => ['nullable', 'integer', 'min:0'],
+            'warranty_days' => ['sometimes', 'integer', 'min:0', 'max:3650'],
             'track_inventory' => ['boolean'],
             'is_active' => ['boolean'],
             'compatible_device_model_ulids' => ['nullable', 'array'],

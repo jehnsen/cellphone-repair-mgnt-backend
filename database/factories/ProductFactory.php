@@ -3,10 +3,11 @@
 namespace Database\Factories;
 
 use App\Models\DeviceBrand;
+use App\Models\Product;
 use App\Models\ProductCategory;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
-/** @extends Factory<\App\Models\Product> */
+/** @extends Factory<Product> */
 class ProductFactory extends Factory
 {
     public function definition(): array
@@ -25,14 +26,20 @@ class ProductFactory extends Factory
             'selling_price' => round($cost * fake()->randomFloat(2, 1.2, 1.8), 2),
             'is_serialized' => $type === 'handset',
             'reorder_point' => fake()->numberBetween(0, 10),
+            'warranty_days' => 0,
             'track_inventory' => true,
             'is_active' => true,
         ];
     }
 
+    public function withWarranty(int $days = 365): static
+    {
+        return $this->state(fn () => ['warranty_days' => $days]);
+    }
+
     public function handset(): static
     {
-        return $this->state(fn () => ['type' => 'handset', 'is_serialized' => true]);
+        return $this->state(fn () => ['type' => 'handset', 'is_serialized' => true, 'warranty_days' => 365]);
     }
 
     public function part(): static

@@ -20,7 +20,7 @@ Conventions used throughout:
 | `product.type` | `handset`, `accessory`, `part` |
 | `serialized_unit.condition` | `brand_new`, `open_box`, `secondhand`, `refurbished` |
 | `serialized_unit.grade` | `A`, `B`, `C` (nullable; only meaningful when condition = `secondhand`/`refurbished`) |
-| `serialized_unit.status` | `in_stock`, `reserved`, `sold`, `for_repair`, `written_off` |
+| `serialized_unit.status` | `in_stock`, `reserved`, `sold`, `for_repair`, `written_off`, `returned_to_supplier` |
 | `repair_ticket.status` | `received`, `diagnosed`, `awaiting_approval`, `awaiting_parts`, `in_repair`, `qc`, `ready_for_pickup`, `released`, `unrepairable`, `returned_as_is`, `unclaimed` |
 | `ticket_photo.phase` | `intake`, `pre_repair`, `post_repair`, `release` *(brief said "intake and release"; widened to match `imei_verifications.phase` for consistency — Flag 2)* |
 | `ticket_quote.channel` | `call`, `sms`, `viber`, `email`, `in_person`, `app` *(not enumerated in brief — proposed — Flag 3)* |
@@ -28,6 +28,12 @@ Conventions used throughout:
 | `imei_verification.phase` | `intake`, `pre_repair`, `post_repair`, `release` |
 | `part_swap.disposition` | `returned_to_customer`, `retained_for_disposal`, `returned_to_supplier` |
 | `warranty_claim.fault_attribution` | `part_defect`, `workmanship`, `customer_damage`, `not_covered` |
+| `sale_warranty.coverage` | `shop`, `manufacturer` |
+| `sale_warranty_claim.handling` | `separate`, `repair_board` |
+| `sale_warranty_claim.status` | `open`, `resolved`, `rejected` |
+| `sale_warranty_claim.resolution` | `repaired_in_house`, `replaced`, `returned_to_supplier`, `refunded`, `rejected` (nullable until resolved) |
+| `supplier_return.reason` | `factory_defect`, `dead_on_arrival`, `wrong_item`, `other` |
+| `supplier_return.status` | `sent`, `replaced`, `credited`, `rejected`, `closed` |
 | `stock_movement.type` | `receipt`, `sale`, `return_in`, `return_out`, `ticket_consumption`, `adjustment`, `transfer_in`, `transfer_out`, `write_off` |
 | `purchase_order.status` | `draft`, `submitted`, `partially_received`, `received`, `cancelled`, `closed` |
 | `goods_receipt.status` | `draft`, `posted` |
@@ -221,6 +227,22 @@ Written by: `store_credit` refunds (`reason = refund`), `store_credit` payments 
 
 **cash_movements** — append-only, no ulid
 `shift_id FK, direction ENUM(in,out), amount DECIMAL(14,2), reason VARCHAR(160), actor_id FK→users, created_at`
+
+#### Sales warranty (added post-Stage-8, client request)
+
+Deliberately kept apart from the repair-ticket `warranties` / `warranty_claims` pair (§2.4): a customer availing the warranty on a unit they *bought* is a sales-counter matter that never opens a job order. `products.warranty_days SMALLINT UNSIGNED DEFAULT 0` is the catalog default term. `serialized_units.status` gains `returned_to_supplier` (a terminal state — the unit left our hands but the vendor owes a replacement or credit, so it's neither `sold` nor `written_off`).
+
+**sale_warranties** — ulid ✓, branch-scoped
+`branch_id FK, sale_id FK RESTRICT, sale_line_id FK→sale_lines RESTRICT UNIQUE, serialized_unit_id FK RESTRICT, customer_id FK NULLABLE, coverage ENUM(shop,manufacturer) DEFAULT 'shop', term_days SMALLINT UNSIGNED, starts_at DATE (= sale date), expiry_date DATE, warranty_code VARCHAR(20) UNIQUE (SW-{branch}-{YYYYMM}-{####}, gapless via Sequence), terms TEXT NULLABLE, exclusions TEXT NULLABLE, voided_at DATETIME NULLABLE, created_at, updated_at`
+Issued automatically by `SaleWarrantyService::issueForLine()` as each `serialized_unit` sale line is committed, term from `products.warranty_days` unless the line overrides it (`lines.*.warranty_days` / `warranty_coverage` / `warranty_terms`). Nothing is issued when the effective term is 0. Voiding/refunding the sale stamps `voided_at`.
+
+**sale_warranty_claims** — ulid ✓, branch-scoped
+`branch_id FK, sale_warranty_id FK RESTRICT, serialized_unit_id FK RESTRICT (denormalised), reported_defect TEXT, handling ENUM(separate,repair_board) DEFAULT 'separate', repair_ticket_id FK→repair_tickets NULLABLE (optional link only, never created here), within_coverage BOOLEAN (stamped at filing), status ENUM(open,resolved,rejected) DEFAULT 'open', resolution ENUM(repaired_in_house,replaced,returned_to_supplier,refunded,rejected) NULLABLE, outcome_notes TEXT NULLABLE, filed_by FK→users, resolved_by FK→users NULLABLE, resolved_at DATETIME NULLABLE, created_at, updated_at`
+Filing never touches the repair board. `handling = repair_board` only pins an existing job order for whoever does the bench work.
+
+**supplier_returns** — ulid ✓, branch-scoped
+`branch_id FK, supplier_id FK RESTRICT, serialized_unit_id FK RESTRICT, sale_warranty_claim_id FK NULLABLE (the claim that triggered it), reason ENUM(factory_defect,dead_on_arrival,wrong_item,other), reason_note TEXT NULLABLE, status ENUM(sent,replaced,credited,rejected,closed) DEFAULT 'sent', replacement_serialized_unit_id FK→serialized_units NULLABLE, credit_amount DECIMAL(14,2) NULLABLE, sent_at DATE, resolved_at DATETIME NULLABLE, processed_by FK→users, created_at, updated_at`
+Creating one writes the stock ledger via `StockMovementRecorder`: a `return_in (+1)` first if the unit was already `sold` (so the round trip nets to zero on-hand), then a `return_out (-1)`; the unit moves to `returned_to_supplier`. `close()` records the outcome — `replaced` mints a fresh unit (`SerializedUnitService::create()`, a normal `receipt`), `credited` records `credit_amount` — and carries any still-open linked claim to `resolved` / `returned_to_supplier`.
 
 ---
 
@@ -528,6 +550,17 @@ Sales / POS
 - `GET /api/v1/customers/{ulid}/store-credit` — shop-wide balance + append-only ledger
 - `POST /api/v1/customers/{ulid}/store-credit/adjust` — manager-only manual `credit`/`debit` (`store_credit.manage`)
 - Trade-in: `POST /api/v1/sales/{ulid}/payments` with `method = trade_in` and `acquisition_ulid` (a completed buy-back; `offered_price` caps the credit)
+
+Sales warranty (post-Stage-8, client request — separate from repair warranties)
+- `GET /api/v1/sales/{ulid}/warranties` — every warranty a sale issued
+- `GET /api/v1/serialized-units/{ulid}/warranties` — a unit's warranty history
+- `GET /api/v1/sale-warranties`, `GET /api/v1/sale-warranties/{ulid}`
+- `POST /api/v1/sale-warranties/{ulid}/claims` — file a claim (stays under CP units; never creates a job order)
+- `GET /api/v1/sale-warranty-claims`, `GET /api/v1/sale-warranty-claims/{ulid}`
+- `POST /api/v1/sale-warranty-claims/{ulid}/resolve` — `{resolution, outcome_notes}`
+- `GET|POST /api/v1/supplier-returns`, `GET /api/v1/supplier-returns/{ulid}`
+- `POST /api/v1/supplier-returns/{ulid}/close` — `{outcome, replacement?, credit_amount?}`
+- Permissions: `sales_warranty.view` / `sales_warranty.manage` (owner, manager, cashier, technician view-only); `supplier_returns.manage` (owner, manager, cashier)
 
 Buy-back / refurb
 - `GET|POST /api/v1/acquisitions`, `GET|PATCH /api/v1/acquisitions/{ulid}`

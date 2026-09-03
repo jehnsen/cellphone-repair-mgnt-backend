@@ -19,6 +19,8 @@ use App\Repositories\Contracts\PurchaseOrderRepositoryInterface;
 use App\Repositories\Contracts\RefurbJobRepositoryInterface;
 use App\Repositories\Contracts\RepairTicketRepositoryInterface;
 use App\Repositories\Contracts\SaleRepositoryInterface;
+use App\Repositories\Contracts\SaleWarrantyClaimRepositoryInterface;
+use App\Repositories\Contracts\SaleWarrantyRepositoryInterface;
 use App\Repositories\Contracts\SerializedUnitRepositoryInterface;
 use App\Repositories\Contracts\ServiceCatalogRepositoryInterface;
 use App\Repositories\Contracts\SettingRepositoryInterface;
@@ -27,6 +29,7 @@ use App\Repositories\Contracts\StockAdjustmentRepositoryInterface;
 use App\Repositories\Contracts\StockLevelRepositoryInterface;
 use App\Repositories\Contracts\StockMovementRepositoryInterface;
 use App\Repositories\Contracts\SupplierRepositoryInterface;
+use App\Repositories\Contracts\SupplierReturnRepositoryInterface;
 use App\Repositories\Contracts\UserRepositoryInterface;
 use App\Repositories\CustomerDeviceRepository;
 use App\Repositories\CustomerRepository;
@@ -41,6 +44,8 @@ use App\Repositories\PurchaseOrderRepository;
 use App\Repositories\RefurbJobRepository;
 use App\Repositories\RepairTicketRepository;
 use App\Repositories\SaleRepository;
+use App\Repositories\SaleWarrantyClaimRepository;
+use App\Repositories\SaleWarrantyRepository;
 use App\Repositories\SerializedUnitRepository;
 use App\Repositories\ServiceCatalogRepository;
 use App\Repositories\SettingRepository;
@@ -49,6 +54,7 @@ use App\Repositories\StockAdjustmentRepository;
 use App\Repositories\StockLevelRepository;
 use App\Repositories\StockMovementRepository;
 use App\Repositories\SupplierRepository;
+use App\Repositories\SupplierReturnRepository;
 use App\Repositories\UserRepository;
 use Illuminate\Support\ServiceProvider;
 
@@ -73,6 +79,9 @@ class RepositoryServiceProvider extends ServiceProvider
         StockMovementRepositoryInterface::class => StockMovementRepository::class,
         ShiftRepositoryInterface::class => ShiftRepository::class,
         SaleRepositoryInterface::class => SaleRepository::class,
+        SaleWarrantyRepositoryInterface::class => SaleWarrantyRepository::class,
+        SaleWarrantyClaimRepositoryInterface::class => SaleWarrantyClaimRepository::class,
+        SupplierReturnRepositoryInterface::class => SupplierReturnRepository::class,
         PurchaseOrderRepositoryInterface::class => PurchaseOrderRepository::class,
         GoodsReceiptRepositoryInterface::class => GoodsReceiptRepository::class,
         AcquisitionRepositoryInterface::class => AcquisitionRepository::class,

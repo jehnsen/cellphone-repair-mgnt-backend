@@ -26,6 +26,7 @@ class StoreProductRequest extends FormRequest
             'selling_price' => ['required', 'numeric', 'min:0'],
             'is_serialized' => ['boolean'],
             'reorder_point' => ['nullable', 'integer', 'min:0'],
+            'warranty_days' => ['nullable', 'integer', 'min:0', 'max:3650'],
             'track_inventory' => ['boolean'],
             'is_active' => ['boolean'],
             'compatible_device_model_ulids' => ['nullable', 'array'],

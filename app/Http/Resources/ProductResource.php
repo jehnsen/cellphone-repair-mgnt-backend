@@ -2,10 +2,11 @@
 
 namespace App\Http\Resources;
 
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
-/** @mixin \App\Models\Product */
+/** @mixin Product */
 class ProductResource extends JsonResource
 {
     public function toArray(Request $request): array
@@ -22,6 +23,7 @@ class ProductResource extends JsonResource
             'selling_price' => $this->selling_price,
             'is_serialized' => $this->is_serialized,
             'reorder_point' => $this->reorder_point,
+            'warranty_days' => $this->warranty_days,
             'track_inventory' => $this->track_inventory,
             'is_active' => $this->is_active,
             'category' => new ProductCategoryResource($this->whenLoaded('category')),
