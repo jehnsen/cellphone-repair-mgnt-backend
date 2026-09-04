@@ -36,7 +36,7 @@ class RepairTicketController extends Controller
         $data['customer_device_id'] = CustomerDevice::idFromUlid($data['customer_device_ulid']);
 
         if (isset($data['assigned_technician_ulid'])) {
-            $data['assigned_technician_id'] = User::idFromUlid($data['assigned_technician_ulid']);
+            $data['assigned_technician_id'] = $this->technicianIdFromUlid($data['assigned_technician_ulid']);
         }
 
         unset($data['branch_ulid'], $data['customer_ulid'], $data['customer_device_ulid'], $data['assigned_technician_ulid']);
@@ -62,7 +62,7 @@ class RepairTicketController extends Controller
         $data = $request->validated();
 
         if (isset($data['assigned_technician_ulid'])) {
-            $data['assigned_technician_id'] = User::idFromUlid($data['assigned_technician_ulid']);
+            $data['assigned_technician_id'] = $this->technicianIdFromUlid($data['assigned_technician_ulid']);
         }
         unset($data['assigned_technician_ulid']);
 
@@ -85,5 +85,23 @@ class RepairTicketController extends Controller
         $this->authorize('view', $ticket);
 
         return TicketEventResource::collection($this->tickets->events($ticket));
+    }
+
+    /**
+     * Resolve an assignee ULID to its internal id without the branch scope.
+     *
+     * A technician may be based at another branch than the one the job order
+     * is filed at — a small shop runs one bench that serves several
+     * storefronts — and the request already validated the ULID against the
+     * whole `users` table (Rule::exists is unscoped). Going through the
+     * branch-scoped User::idFromUlid() here would 404 that same technician,
+     * so resolve them directly.
+     */
+    private function technicianIdFromUlid(string $ulid): int
+    {
+        return User::withoutGlobalScopes()
+            ->where('ulid', $ulid)
+            ->firstOrFail()
+            ->getKey();
     }
 }

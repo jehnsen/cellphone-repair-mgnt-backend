@@ -87,9 +87,21 @@ $script:Fail = $false
 
 # ------------------------------------------------------------------ config ---
 # Override any of these with an environment variable before running.
-$Backend    = if ($env:CPR_BACKEND)  { $env:CPR_BACKEND }  else { Split-Path -Parent $PSScriptRoot }
-$Frontend   = if ($env:CPR_FRONTEND) { $env:CPR_FRONTEND } else { 'D:\xampp\apache\bin\FE\cellphone-repair-mgnt-app' }
-$LaragonExe = if ($env:LARAGON_EXE)  { $env:LARAGON_EXE }  else { 'D:\laragon\laragon.exe' }
+$Backend    = if ($env:CPR_BACKEND) { $env:CPR_BACKEND } else { Split-Path -Parent $PSScriptRoot }
+$LaragonExe = if ($env:LARAGON_EXE) { $env:LARAGON_EXE } else { 'D:\laragon\laragon.exe' }
+
+# Frontend location, in order of preference:
+#   1. $env:CPR_FRONTEND
+#   2. a sibling of the backend repo  (where bootstrap.ps1 puts it)
+#   3. this dev machine's checkout under \FE\
+#   4. fall back to the sibling path, so auto-clone lands it there
+$feSibling = Join-Path (Split-Path $Backend -Parent) 'cellphone-repair-mgnt-app'
+$feDevBox  = 'D:\xampp\apache\bin\FE\cellphone-repair-mgnt-app'
+$Frontend =
+    if     ($env:CPR_FRONTEND)                                  { $env:CPR_FRONTEND }
+    elseif (Test-Path (Join-Path $feSibling 'package.json'))    { $feSibling }
+    elseif (Test-Path (Join-Path $feDevBox  'package.json'))    { $feDevBox }
+    else                                                        { $feSibling }
 
 # Used only to auto-clone the frontend when it isn't on disk yet, and by
 # -Pull. The backend repo is wherever this script already lives.
