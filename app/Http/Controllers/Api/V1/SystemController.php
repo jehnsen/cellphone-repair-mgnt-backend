@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\System\ClearTransactionalDataRequest;
 use App\Http\Requests\Api\V1\System\FreshInstallRequest;
 use App\Services\SystemResetService;
 use App\Support\Api\ApiResponse;
@@ -32,6 +33,17 @@ class SystemController extends Controller
             'tables_recreated' => $result['tables_recreated'],
             'seeded' => ['roles', 'permissions', 'branch', 'settings', 'users', 'catalog'],
             'message' => 'The database was reset to a fresh install. Log in again — existing tokens are gone.',
+        ]);
+    }
+
+    public function clearTransactionalData(ClearTransactionalDataRequest $request): JsonResponse
+    {
+        $result = $this->reset->clearTransactionalData();
+
+        return ApiResponse::success([
+            'status' => 'transactional_data_cleared',
+            'cleared' => $result['cleared'],
+            'message' => 'Sample repair tickets, POS transactions, inventory movements/quantities, and reporting data were cleared. Branches, users, catalog, customers, and suppliers were left untouched.',
         ]);
     }
 }

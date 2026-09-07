@@ -268,6 +268,15 @@ Route::prefix('v1')->group(function (): void {
         // production unless APP_ALLOW_SYSTEM_RESET=true.
         Route::middleware('throttle:system-reset')
             ->post('/system/fresh-install', [SystemController::class, 'freshInstall']);
+
+        // Lighter-weight sibling to fresh-install: empties sample repair
+        // tickets, POS transactions, inventory movements/quantities, and
+        // reporting data while leaving branches/users/catalog/customers/
+        // suppliers alone — for a client who set up their own branches and
+        // catalog and just needs the demo/trial dataset cleared before
+        // going live, without redoing that setup (see SystemResetService).
+        Route::middleware('throttle:system-reset')
+            ->post('/system/clear-transactional-data', [SystemController::class, 'clearTransactionalData']);
     });
 
     // Exists only so the exception-handling test suite can assert the 500
