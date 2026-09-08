@@ -28,4 +28,21 @@ class PublicVerificationService
 
         return RepairTicket::with(['branch', 'warranty'])->findOrFail($verification->repair_ticket_id);
     }
+
+    /**
+     * The same token, resolved with the diagnosis loaded — what the customer
+     * opens on their own phone to see which part is being replaced before
+     * they approve the quote.
+     *
+     * Same token as the chain-of-custody proof on purpose: the shop already
+     * hands this one out, it is already revocable, and it is already behind
+     * the strict `public-verify` limiter. A second link type would be a
+     * second thing to leak.
+     */
+    public function findDiagnosisByToken(string $token): RepairTicket
+    {
+        $ticket = $this->findByToken($token);
+
+        return $ticket->load('finding');
+    }
 }

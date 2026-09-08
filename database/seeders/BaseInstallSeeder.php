@@ -9,7 +9,8 @@ use Illuminate\Database\Seeder;
  * role/permission matrix, the shop's branches (the main repair branch plus
  * the sales-only retail branch), shop-wide settings, the staff accounts,
  * and the full product/service catalog (device brands and models, handset
- * SKUs, accessories, parts, repair services).
+ * SKUs, accessories, parts, repair services), plus the generic phone rig the
+ * diagnosis visualizer draws and its issue-to-part mapping.
  *
  * Deliberately excludes every demo/transactional seeder that
  * DatabaseSeeder pulls in (customers, inventory units, tickets, sales,
@@ -31,6 +32,9 @@ class BaseInstallSeeder extends Seeder
             SettingSeeder::class,
             UserSeeder::class,
             CatalogSeeder::class,
+            // Reference data, not demo data: the visualizer has nothing to
+            // draw without it, and the rig is the same at every shop.
+            DevicePartSeeder::class,
         ]);
     }
 }

@@ -34,4 +34,37 @@ enum Defect: string
     {
         return array_map(fn (self $d) => $d->value, self::cases());
     }
+
+    /**
+     * How the defect reads at the bench.
+     *
+     * Spelled out rather than derived from the case name: Str::headline()
+     * turns power_ic into "Power Ic" and camera_rear into "Camera Rear",
+     * which is how nobody in a repair shop says either of them. The wording
+     * matches the frontend's own DEFECT_LABEL so the findings form and the
+     * diagnosis visualizer never disagree about what a defect is called.
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::Screen => 'Screen',
+            self::Digitizer => 'Digitizer / touch',
+            self::Battery => 'Battery',
+            self::ChargingPort => 'Charging port',
+            self::Motherboard => 'Motherboard',
+            self::PowerIc => 'Power IC',
+            self::CameraRear => 'Rear camera',
+            self::CameraFront => 'Front camera',
+            self::Speaker => 'Loudspeaker',
+            self::Earpiece => 'Earpiece',
+            self::Microphone => 'Microphone',
+            self::Buttons => 'Buttons',
+            self::BackCover => 'Back cover',
+            self::Housing => 'Housing / frame',
+            self::SimReader => 'SIM reader',
+            self::SdReader => 'SD reader',
+            self::WifiAntenna => 'Wi-Fi antenna',
+            self::Other => 'Other',
+        };
+    }
 }

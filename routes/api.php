@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\V1\Auth\TokenController;
 use App\Http\Controllers\Api\V1\BranchController;
 use App\Http\Controllers\Api\V1\Catalog\DeviceBrandController;
 use App\Http\Controllers\Api\V1\Catalog\DeviceModelController;
+use App\Http\Controllers\Api\V1\Catalog\DevicePartController;
 use App\Http\Controllers\Api\V1\Catalog\ProductCategoryController;
 use App\Http\Controllers\Api\V1\Catalog\ProductController;
 use App\Http\Controllers\Api\V1\Catalog\ServiceController;
@@ -17,6 +18,7 @@ use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\ImeiVerificationController;
 use App\Http\Controllers\Api\V1\InstallmentPlanController;
 use App\Http\Controllers\Api\V1\InventoryController;
+use App\Http\Controllers\Api\V1\IssueTypeController;
 use App\Http\Controllers\Api\V1\MessageTemplateController;
 use App\Http\Controllers\Api\V1\MetaController;
 use App\Http\Controllers\Api\V1\PartSwapController;
@@ -39,6 +41,7 @@ use App\Http\Controllers\Api\V1\SupplierController;
 use App\Http\Controllers\Api\V1\SupplierReturnController;
 use App\Http\Controllers\Api\V1\SystemController;
 use App\Http\Controllers\Api\V1\TicketLineController;
+use App\Http\Controllers\Api\V1\TicketDiagnosisSnapshotController;
 use App\Http\Controllers\Api\V1\TicketPaymentController;
 use App\Http\Controllers\Api\V1\TicketPhotoController;
 use App\Http\Controllers\Api\V1\TicketQuoteController;
@@ -60,7 +63,14 @@ Route::prefix('v1')->group(function (): void {
     // The one unauthenticated endpoint in the API — chain-of-custody proof,
     // not a repair-management action. Its own strict limiter (10/min/IP,
     // see AppServiceProvider), not auth, is what keeps it from being scraped.
-    Route::middleware('throttle:public-verify')->get('/public/verify/{token}', [PublicVerificationController::class, 'show']);
+    Route::middleware('throttle:public-verify')->group(function (): void {
+        Route::get('/public/verify/{token}', [PublicVerificationController::class, 'show']);
+
+        // The customer-facing diagnosis view — same token, same limiter, same
+        // redaction rules. A technician sends this link so the customer can
+        // see which part is being replaced before approving the quote.
+        Route::get('/public/verify/{token}/diagnosis', [PublicVerificationController::class, 'diagnosis']);
+    });
 
     // ResolveBranchContext is registered on the whole 'api' group in
     // bootstrap/app.php, ahead of SubstituteBindings — see the comment
@@ -89,6 +99,16 @@ Route::prefix('v1')->group(function (): void {
         // Catalog
         Route::apiResource('device-brands', DeviceBrandController::class);
         Route::apiResource('device-models', DeviceModelController::class);
+
+        // The generic phone rig the diagnosis visualizer draws, plus the
+        // issue -> part mapping over the vocabularies the shop already keeps.
+        // No destroy: a part named by a stored snapshot has to keep
+        // resolving, so management sets is_active instead (same reason
+        // branches have no destroy).
+        Route::apiResource('device-parts', DevicePartController::class)
+            ->only(['index', 'store', 'update']);
+        Route::get('/issue-types', [IssueTypeController::class, 'index']);
+        Route::put('/issue-types/parts', [IssueTypeController::class, 'update']);
         Route::apiResource('services', ServiceController::class);
         Route::apiResource('product-categories', ProductCategoryController::class);
         Route::apiResource('products', ProductController::class);
@@ -130,6 +150,12 @@ Route::prefix('v1')->group(function (): void {
 
         Route::get('/tickets/{ticket}/photos', [TicketPhotoController::class, 'index']);
         Route::post('/tickets/{ticket}/photos', [TicketPhotoController::class, 'store']);
+
+        // What the customer was shown in the 3D view when they approved the
+        // quote. Append-only — there is no update or delete, because a
+        // snapshot that can be edited is not evidence of anything.
+        Route::get('/tickets/{ticket}/diagnosis-snapshots', [TicketDiagnosisSnapshotController::class, 'index']);
+        Route::post('/tickets/{ticket}/diagnosis-snapshots', [TicketDiagnosisSnapshotController::class, 'store']);
 
         Route::get('/tickets/{ticket}/quotes', [TicketQuoteController::class, 'index']);
         Route::post('/tickets/{ticket}/quotes', [TicketQuoteController::class, 'store']);

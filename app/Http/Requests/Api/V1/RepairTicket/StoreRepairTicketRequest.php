@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Api\V1\RepairTicket;
 
 use App\Models\RepairTicket;
+use App\Support\Diagnosis\ProblemTag;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -34,10 +35,7 @@ class StoreRepairTicketRequest extends FormRequest
 
             'reported_problem' => ['nullable', 'string'],
             'problem_tags' => ['nullable', 'array'],
-            'problem_tags.*' => ['string', Rule::in([
-                'screen', 'battery', 'charging_port', 'water_damage', 'no_power',
-                'software', 'camera', 'speaker', 'board_level',
-            ])],
+            'problem_tags.*' => ['string', Rule::in(ProblemTag::values())],
 
             // Both optional: a customer can decline to hand over an unlock
             // secret at intake. If they do give a method other than 'none',

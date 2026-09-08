@@ -121,6 +121,12 @@ class RepairTicket extends Model
         return $this->hasOne(RepairFinding::class);
     }
 
+    /** What the customer was shown in the 3D view, one row per capture. */
+    public function diagnosisSnapshots(): HasMany
+    {
+        return $this->hasMany(TicketDiagnosisSnapshot::class);
+    }
+
     public function payments()
     {
         return Payment::where('payable_type', 'repair_ticket')->where('payable_id', $this->id);
